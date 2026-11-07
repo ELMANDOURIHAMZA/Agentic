@@ -8,9 +8,9 @@ class Settings(BaseSettings):
     database_url: str = Field(validation_alias="DATABASE_URL")
     secret_key: str = Field(validation_alias="SECRET_KEY")
     postgres_password: str = Field(default="change-me", validation_alias="POSTGRES_PASSWORD")
-    llm_provider: str = Field(default="none", validation_alias="LLM_PROVIDER")
-    llm_api_key: str | None = Field(default=None, validation_alias="LLM_API_KEY")
-    llm_model: str | None = Field(default=None, validation_alias="LLM_MODEL")
+    llm_provider: str = Field(default="groq", validation_alias="LLM_PROVIDER")
+    llm_api_key: str | None = Field(default=None, validation_alias="GROQ_API_KEY")
+    llm_model: str | None = Field(default="openai/gpt-oss-120b", validation_alias="LLM_MODEL")
     ocr_languages: str = Field(default="fra+eng+ara", validation_alias="OCR_LANGUAGES")
     llm_base_url: str | None = Field(default=None, validation_alias="LLM_BASE_URL")
     llm_timeout_seconds: float = Field(
@@ -22,6 +22,9 @@ class Settings(BaseSettings):
     )
     workflow_stale_timeout_seconds: int = Field(
         default=3600, gt=0, le=86400, validation_alias="WORKFLOW_STALE_TIMEOUT_SECONDS"
+    )
+    workflow_batch_concurrency: int = Field(
+        default=3, ge=1, le=8, validation_alias="WORKFLOW_BATCH_CONCURRENCY"
     )
     matching_required_skills_weight: float = Field(
         default=40, ge=0, le=100, validation_alias="MATCHING_REQUIRED_SKILLS_WEIGHT"

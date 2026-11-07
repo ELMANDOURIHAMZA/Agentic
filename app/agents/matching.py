@@ -1,3 +1,4 @@
+import json
 import logging
 import re
 import unicodedata
@@ -92,8 +93,6 @@ def _profile_text(profile: ExtractedProfileOut) -> str:
         *profile.certifications,
         *profile.languages,
         *profile.professional_contributions,
-        profile.declared_identity.first_name or "",
-        profile.declared_identity.last_name or "",
     ]
     values.extend(
         item
@@ -121,14 +120,17 @@ class MatchingAgent:
         safe_profile = data.profile.model_copy(
             update={
                 "declared_identity": data.profile.declared_identity.model_copy(
-                    update={"birth_date": None}
+                    update={"first_name": None, "last_name": None, "birth_date": None}
                 )
             }
+        )
+        verification_payload = json.dumps(
+            {"compliance_level": data.document_verification.compliance_level}
         )
         request = (
             f"<exigences>\n{data.requirements.model_dump_json()}\n</exigences>\n"
             f"<profil_non_fiable>\n{safe_profile.model_dump_json(exclude_none=True)}\n</profil_non_fiable>\n"
-            f"<verification>\n{data.document_verification.model_dump_json()}\n</verification>"
+            f"<verification>\n{verification_payload}\n</verification>"
         )
         try:
             semantic = self._llm_client.generate_structured(_PROMPT, request, SemanticEvaluationOut)

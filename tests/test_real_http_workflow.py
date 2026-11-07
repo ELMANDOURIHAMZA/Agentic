@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 from reportlab.pdfgen import canvas
 from sqlalchemy import select
 
+from app.config import get_settings
 from app.db import SessionLocal
 from app.main import app
 from app.models import AnalysisResult, Application, ApplicationStatus, Job, User, UserRole
@@ -17,7 +18,12 @@ pytestmark = pytest.mark.integration
 
 def _require_real_provider() -> None:
     if os.getenv("RUN_REAL_LLM_TESTS") != "1":
-        pytest.skip("Set RUN_REAL_LLM_TESTS=1 to run billable provider integration tests.")
+        pytest.skip("Set RUN_REAL_LLM_TESTS=1 to run billable Groq integration tests.")
+    settings = get_settings()
+    if settings.llm_provider.casefold() != "groq":
+        pytest.fail("These integration tests are restricted to Groq.")
+    if not (settings.llm_api_key or "").strip():
+        pytest.skip("Set GROQ_API_KEY in the environment or local .env file.")
 
 
 def _pdf(text: str) -> bytes:
@@ -120,17 +126,26 @@ def test_real_http_recruitment_workflow() -> None:
             files={
                 "cv": (
                     "cv.pdf",
-                    _pdf("Alex Martin. Python, FastAPI, PostgreSQL. English."),
+                    _pdf(
+                        "Alex Martin. Education: Master in Computer Science, 2021. "
+                        "Python, FastAPI, PostgreSQL. English."
+                    ),
                     "application/pdf",
                 ),
                 "diploma": (
                     "diploma.pdf",
-                    _pdf("Fictional diploma for Alex Martin."),
+                    _pdf(
+                        "Fictional diploma. Holder: Alex Martin. "
+                        "Title: Master in Computer Science. Graduation year: 2021."
+                    ),
                     "application/pdf",
                 ),
                 "cin": (
                     "cin.pdf",
-                    _pdf("Fictional identity document for Alex Martin."),
+                    _pdf(
+                        "Fictional identity document. First name: Alex. Last name: Martin. "
+                        "Fictional reference: TEST-CIN-00000."
+                    ),
                     "application/pdf",
                 ),
             },
@@ -178,8 +193,6 @@ def test_real_http_recruitment_workflow() -> None:
         candidate.close()
         with SessionLocal() as db:
             db.execute(
-                User.__table__.delete().where(
-                    User.email.in_([admin_email, candidate_email])
-                )
+                User.__table__.delete().where(User.email.in_([admin_email, candidate_email]))
             )
             db.commit()

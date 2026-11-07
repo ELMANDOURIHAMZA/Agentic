@@ -14,7 +14,7 @@ def _clean_list(values: list[str]) -> list[str]:
 class StructuredRequirementsOut(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    required_degree: str = Field(min_length=1, max_length=300)
+    required_degree: str = Field(default="", max_length=300)
     minimum_experience_years: float = Field(ge=0, le=80)
     required_skills: list[str] = Field(default_factory=list, max_length=100)
     preferred_skills: list[str] = Field(default_factory=list, max_length=100)

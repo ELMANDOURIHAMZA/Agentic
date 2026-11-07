@@ -37,3 +37,11 @@ def test_agent_inputs_reject_empty_required_values() -> None:
         JobRequirementInput(title="")
     with pytest.raises(ValidationError):
         CVExtractionInput(cv_text="")
+
+
+def test_job_without_required_degree_is_valid() -> None:
+    result = StructuredRequirementsOut(
+        required_degree="",
+        minimum_experience_years=0,
+    )
+    assert result.required_degree == ""

@@ -3,6 +3,7 @@ import hashlib
 import json
 import logging
 from collections.abc import Iterable
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -485,14 +486,50 @@ def run_batch(
     llm_client: LLMClient | None = None,
     prestarted: bool = False,
 ) -> dict[int, str]:
-    results: dict[int, str] = {}
-    for application_id in application_ids:
+    """Run several independent application workflows concurrently.
+
+    Each worker owns its database session. Concurrency is bounded by
+    WORKFLOW_BATCH_CONCURRENCY to protect the database and Groq quota.
+    """
+    unique_ids = list(dict.fromkeys(application_ids))
+    if not unique_ids:
+        return {}
+
+    def process_one(application_id: int) -> tuple[int, str]:
         db = session_factory()
         try:
             ApplicationWorkflow(llm_client).run(db, application_id, prestarted=prestarted)
-            results[application_id] = "completed"
+            return application_id, "completed"
         except WorkflowError:
-            results[application_id] = "error"
+            return application_id, "error"
+        except Exception:
+            logger.exception("Erreur inattendue du traitement de la candidature %s", application_id)
+            return application_id, "error"
         finally:
             db.close()
-    return results
+
+    max_workers = min(
+        len(unique_ids),
+        get_settings().workflow_batch_concurrency,
+    )
+    results: dict[int, str] = {}
+    with ThreadPoolExecutor(
+        max_workers=max_workers,
+        thread_name_prefix="application-workflow",
+    ) as executor:
+        futures = {
+            executor.submit(process_one, application_id): application_id
+            for application_id in unique_ids
+        }
+        for future in as_completed(futures):
+            application_id = futures[future]
+            try:
+                result_id, status = future.result()
+                results[result_id] = status
+            except Exception:
+                logger.exception(
+                    "Échec inattendu du worker de candidature %s",
+                    application_id,
+                )
+                results[application_id] = "error"
+    return {application_id: results[application_id] for application_id in unique_ids}
