@@ -6,13 +6,21 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.models import AnalysisResult, Application, ApplicationStatus, Document, Job, User
+from app.models import (
+    AnalysisResult,
+    Application,
+    ApplicationStatus,
+    Document,
+    DocumentVerification,
+    Job,
+    User,
+)
 from app.schemas.candidate import (
     CandidateApplicationView,
     CandidateProfileUpdate,
-    CandidateResultView,
+    build_candidate_view,
 )
-from app.security.auth import new_csrf_token
+from app.security.auth import csrf_token_for, set_csrf_cookie
 from app.security.dependencies import require_candidate
 
 router = APIRouter(prefix="/candidate", tags=["candidate"])
@@ -33,11 +41,11 @@ def _csrf_valid(request: Request, token: str) -> bool:
 def _page(
     request: Request, template: str, error: str | None = None, **context: object
 ) -> HTMLResponse:
-    token = new_csrf_token()
+    token = csrf_token_for(request)
     response = request.app.state.templates.TemplateResponse(
         request, template, {**context, "csrf_token": token, "error": error}
     )
-    response.set_cookie("csrf_token", token, httponly=False, samesite="lax")
+    set_csrf_cookie(response, token)
     return response
 
 
@@ -164,10 +172,16 @@ def application_result(
             result=None,
             message="Les résultats ne sont pas encore disponibles.",
         )
-    result = CandidateResultView(
+    verification = db.scalar(
+        select(DocumentVerification).where(DocumentVerification.application_id == application.id)
+    )
+    data = verification.data if verification else {}
+    level = data.get("compliance_level")
+    result = build_candidate_view(
         global_score=analysis.global_score,
         matching_skills=[str(value) for value in analysis.matching_skills],
         missing_skills=[str(value) for value in analysis.missing_skills],
-        compliance_summary="Résultat indicatif disponible pour aider votre compréhension.",
+        compliance_level=float(level) if isinstance(level, int | float) else None,
+        has_inconsistencies=bool(data.get("inconsistencies")),
     )
     return _page(request, "candidate/result.html", result=result, message=None)

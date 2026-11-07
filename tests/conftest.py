@@ -58,3 +58,17 @@ def clean_test_database() -> Iterator[None]:
             shutil.rmtree(path)
         else:
             path.unlink()
+
+
+@pytest.fixture
+def llm_env(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    """Configure un fournisseur factice : aucun réseau, seul le transport simulé répond."""
+    from app.config import get_settings
+
+    monkeypatch.setenv("LLM_PROVIDER", "openai")
+    monkeypatch.setenv("LLM_API_KEY", "test-key-not-a-secret")
+    monkeypatch.setenv("LLM_MODEL", "test-model")
+    monkeypatch.setenv("LLM_RETRY_BACKOFF_SECONDS", "0.01")
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()

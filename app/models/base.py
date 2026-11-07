@@ -22,3 +22,8 @@ def utc_now() -> datetime:
 
 def timestamp_column() -> Mapped[datetime]:
     return mapped_column(default=utc_now, nullable=False)
+
+
+def updated_column() -> Mapped[datetime]:
+    """Horodatage mis à jour automatiquement à chaque UPDATE."""
+    return mapped_column(default=utc_now, onupdate=utc_now, nullable=False)

@@ -22,6 +22,10 @@ def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required"
         )
+    if int(payload.get("sv", 0)) != user.session_version:  # session révoquée (déconnexion)
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required"
+        )
     return user
 
 

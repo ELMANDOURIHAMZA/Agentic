@@ -2,13 +2,14 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request, status
 from fastapi.responses import HTMLResponse, RedirectResponse
+from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.models import Job, JobStatus, User
 from app.schemas.job import JobCreate
-from app.security.auth import new_csrf_token
+from app.security.auth import csrf_token_for, set_csrf_cookie
 from app.security.dependencies import require_admin
 from app.services.job_service import close_job, publish_job
 
@@ -21,15 +22,24 @@ def _csrf_is_valid(request: Request, csrf_token: str) -> bool:
 
 
 def _csrf_response(request: Request, template: str = "admin/jobs.html") -> HTMLResponse:
-    csrf_token = new_csrf_token()
+    csrf_token = csrf_token_for(request)
     response = request.app.state.templates.TemplateResponse(
         request,
         template,
         {"csrf_token": csrf_token, "error": "CSRF validation failed"},
         status_code=status.HTTP_403_FORBIDDEN,
     )
-    response.set_cookie("csrf_token", csrf_token, httponly=False, samesite="lax")
+    set_csrf_cookie(response, csrf_token)
     return response
+
+
+def _validation_error(exc: ValidationError) -> HTTPException:
+    """422 structuré (même format que les validations FastAPI : loc, msg, type)."""
+    errors = [
+        {"loc": ["body", *map(str, error["loc"])], "msg": error["msg"], "type": error["type"]}
+        for error in exc.errors()
+    ]
+    return HTTPException(status_code=422, detail=errors)
 
 
 def _form_data(
@@ -72,13 +82,13 @@ def list_jobs(
     if status_filter:
         query = query.where(Job.status == status_filter)
     jobs = list(db.scalars(query))
-    csrf_token = new_csrf_token()
+    csrf_token = csrf_token_for(request)
     response = request.app.state.templates.TemplateResponse(
         request,
         "admin/jobs.html",
         {"jobs": jobs, "status_filter": status_filter, "csrf_token": csrf_token, "error": None},
     )
-    response.set_cookie("csrf_token", csrf_token, httponly=False, samesite="lax")
+    set_csrf_cookie(response, csrf_token)
     return response
 
 
@@ -114,8 +124,8 @@ def create_job(
             location,
             other_requirements,
         )
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except ValidationError as exc:
+        raise _validation_error(exc) from exc
     db.add(Job(**values.model_dump()))
     db.commit()
     return RedirectResponse("/admin/jobs", status_code=status.HTTP_303_SEE_OTHER)
@@ -146,18 +156,21 @@ def edit_job(
         raise HTTPException(status_code=404, detail="Offre introuvable")
     if job.status == JobStatus.CLOSED:
         raise HTTPException(status_code=409, detail="Une offre clôturée n'est pas modifiable.")
-    values = _form_data(
-        title,
-        description,
-        required_degree,
-        required_experience_years,
-        required_skills,
-        preferred_skills,
-        required_certifications,
-        languages,
-        location,
-        other_requirements,
-    )
+    try:
+        values = _form_data(
+            title,
+            description,
+            required_degree,
+            required_experience_years,
+            required_skills,
+            preferred_skills,
+            required_certifications,
+            languages,
+            location,
+            other_requirements,
+        )
+    except ValidationError as exc:
+        raise _validation_error(exc) from exc
     for key, value in values.model_dump().items():
         setattr(job, key, value)
     db.commit()
@@ -176,13 +189,13 @@ def edit_job_page(
         raise HTTPException(status_code=404, detail="Offre introuvable")
     if job.status == JobStatus.CLOSED:
         raise HTTPException(status_code=409, detail="Une offre clôturée n'est pas modifiable.")
-    csrf_token = new_csrf_token()
+    csrf_token = csrf_token_for(request)
     response = request.app.state.templates.TemplateResponse(
         request,
         "admin/job_edit.html",
         {"job": job, "csrf_token": csrf_token, "error": None},
     )
-    response.set_cookie("csrf_token", csrf_token, httponly=False, samesite="lax")
+    set_csrf_cookie(response, csrf_token)
     return response
 
 

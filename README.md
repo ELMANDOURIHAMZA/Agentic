@@ -77,6 +77,9 @@ refuse les valeurs d'exemple.
 | `LLM_PROVIDER`, `LLM_API_KEY`, `LLM_MODEL`, `LLM_BASE_URL` | fournisseur LLM (OpenAI recommandé, ou anthropic, gemini, ollama) ; `LLM_BASE_URL` remplace l'URL de base ; aucun appel réseau dans les tests |
 | `LLM_TIMEOUT_SECONDS`, `LLM_MAX_RETRIES` | limites d'appel |
 | `WORKFLOW_STALE_TIMEOUT_SECONDS` | délai de récupération d'un run abandonné |
+| `WORKFLOW_MAX_CONCURRENCY` | candidatures analysées en parallèle dans un lot (défaut 2, max 8) |
+| `SESSION_MAX_AGE_SECONDS` | durée de validité d'une session (défaut 8 h) |
+| `SEED_PASSWORD` | mot de passe du jeu de démonstration (commande `seed-demo` uniquement) |
 | `MATCHING_*_WEIGHT` | six pondérations du score, total 100 |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_STARTTLS` | notifications |
 | `ADMIN_NOTIFICATION_EMAIL` | destinataire admin |
@@ -84,6 +87,18 @@ refuse les valeurs d'exemple.
 | `APP_PORT` | port publié par Docker |
 
 `.env.example` ne contient aucun secret réel.
+
+## Données de démonstration fictives
+
+```bash
+export SEED_PASSWORD='Choisir-Un-Mot-De-Passe-Demo!2026'   # jamais versionné
+python -m app.cli seed-demo           # 2 offres, 5 candidats, 5 candidatures, 15 documents
+python -m app.cli generate-fixtures   # écrit les PDF fictifs dans data/fixtures/
+```
+
+Le seed est idempotent et laisse toutes les candidatures « En attente de traitement » :
+aucune analyse n'est lancée. Un dossier contient une incohérence volontaire (Karim Alaoui).
+Scénario complet : [docs/DEMO.md](docs/DEMO.md).
 
 ## Lancement local
 
@@ -121,10 +136,11 @@ volume ne sont pas supprimés par `docker compose down`.
 
 ## Données de livraison académique
 
-La livraison académique n'embarque aucun CV, diplôme ou CIN réel. Les archives
-personnelles et les offres externes sont conservées hors du workspace de
-livraison. Les commandes d'import et de benchmark de données personnelles ne
-font pas partie de l'interface CLI livrée.
+La livraison académique n'embarque aucun CV, diplôme ou CIN réel : les PDF de
+`data/fixtures/` sont générés par `app/demo_data.py` et portent la mention
+« SPÉCIMEN FICTIF ». Les modules `app/real_data.py` et `app/services/benchmark.py`
+sont des outils d'évaluation locale (bonus) sans commande CLI ni test ; ils ne
+sont pas utilisés par l'application.
 
 ## Règle de déclenchement IA
 
@@ -144,9 +160,10 @@ passage à `PROCESSING`.
 docker compose config
 ```
 
-Les tests unitaires couvrent les schémas et les fonctions déterministes sans
-fournisseur simulé. Les tests marqués `integration` effectuent de vrais appels
-au fournisseur configuré uniquement lorsque `RUN_REAL_LLM_TESTS=1` est défini.
+Les agents et l'orchestrateur sont testés avec un **transport LLM simulé**
+(`tests/llm_fakes.py`) : aucun réseau ni clé n'est nécessaire. Les tests marqués
+`integration` effectuent de vrais appels au fournisseur configuré uniquement
+lorsque `RUN_REAL_LLM_TESTS=1` est défini (2 tests ignorés par défaut).
 Ne jamais placer la clé dans Git ou dans les logs.
 
 ## Structure
@@ -159,9 +176,9 @@ app/orchestration workflow et récupération des runs
 app/services/     stockage, lecture, emails et client LLM
 app/services/llm.py client des fournisseurs LLM réels
 migrations/       Alembic
-scripts/          outils de maintenance non métier
+scripts/          génération des annexes de documentation (prompts, schémas JSON)
 tests/            tests unitaires, intégration et sécurité
-docs/             architecture, sécurité, démonstration et plan de test
+docs/             rapport technique, architecture, sécurité, score, démonstration, plan de test
 ```
 
 ## Intégration LLM réelle
@@ -184,5 +201,7 @@ L'ordre des scores peut varier avec un vrai LLM. La limitation de tentatives de 
 mémoire. Les emails ne sont pas relancés automatiquement après un crash. La
 recherche accent-insensible est en mémoire. Les preuves du matching doivent
 être présentes dans le texte du profil (comparaison insensible à la casse et aux
-accents). Aucun appel à un vrai LLM n'est évalué automatiquement sans clé configurée.
+accents). Aucun appel à un vrai LLM n'est évalué automatiquement sans clé configurée. Le build
+Docker n'a pas été exécuté dans l'environnement de remise en conformité (voir
+`docs/RAPPORT_TECHNIQUE.md`, section 14). Aucune capture d'écran n'est fournie.
 Les langues sont comptées dans `matching_skills`/`missing_skills`.

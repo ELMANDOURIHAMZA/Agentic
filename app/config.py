@@ -23,6 +23,12 @@ class Settings(BaseSettings):
     workflow_stale_timeout_seconds: int = Field(
         default=3600, gt=0, le=86400, validation_alias="WORKFLOW_STALE_TIMEOUT_SECONDS"
     )
+    session_max_age_seconds: int = Field(
+        default=28800, ge=300, le=2592000, validation_alias="SESSION_MAX_AGE_SECONDS"
+    )
+    workflow_max_concurrency: int = Field(
+        default=2, ge=1, le=8, validation_alias="WORKFLOW_MAX_CONCURRENCY"
+    )
     matching_required_skills_weight: float = Field(
         default=40, ge=0, le=100, validation_alias="MATCHING_REQUIRED_SKILLS_WEIGHT"
     )

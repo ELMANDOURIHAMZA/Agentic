@@ -3,10 +3,12 @@ import hashlib
 import json
 import logging
 from collections.abc import Iterable
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.agents.cv_extraction import CVExtractionAgent, CVExtractionInput
@@ -100,26 +102,68 @@ def _document_for(application: Application, kind: DocumentType) -> Document:
 
 
 def recover_stale_processing(db: Session) -> int:
-    """Marque les workflows abandonnés comme erreurs récupérables."""
+    """Récupère les traitements abandonnés (crash, redémarrage) en erreurs relançables.
+
+    Trois cas, tous traités sans double exécution possible :
+    1. run ``RUNNING`` plus ancien que le délai : le worker est considéré perdu ;
+    2. run ``PENDING`` plus ancien que le délai : la tâche de fond n'a jamais démarré ;
+    3. candidature ``PROCESSING`` sans aucun run actif (orphelin) : la transition et la
+       création du run sont atomiques (voir ``reserve_processing``), donc cet état ne peut
+       venir que d'une donnée antérieure ou d'une interruption : elle est récupérée de suite.
+    """
     cutoff = _now() - timedelta(seconds=get_settings().workflow_stale_timeout_seconds)
+    recovered: set[int] = set()
     stale_runs = list(
         db.scalars(
             select(WorkflowRun).where(
-                WorkflowRun.status == WorkflowStatus.RUNNING,
-                WorkflowRun.started_at < cutoff,
+                ((WorkflowRun.status == WorkflowStatus.RUNNING) & (WorkflowRun.started_at < cutoff))
+                | (
+                    (WorkflowRun.status == WorkflowStatus.PENDING)
+                    & (WorkflowRun.created_at < cutoff)
+                )
             )
         )
     )
     for run in stale_runs:
-        application = db.get(Application, run.application_id)
+        run.status = WorkflowStatus.ERROR
+        run.finished_at = _now()
+        recovered.add(run.application_id)
+    active_ids = set(
+        db.scalars(
+            select(WorkflowRun.application_id).where(
+                WorkflowRun.status.in_([WorkflowStatus.PENDING, WorkflowStatus.RUNNING])
+            )
+        )
+    )
+    orphan_ids = (
+        set(
+            db.scalars(
+                select(Application.id).where(Application.status == ApplicationStatus.PROCESSING)
+            )
+        )
+        - active_ids
+    )
+    recovered |= orphan_ids
+    for application_id in recovered:
+        application = db.get(Application, application_id)
         if application is not None and application.status == ApplicationStatus.PROCESSING:
             application.status = ApplicationStatus.ERROR
             application.error_message = "Traitement interrompu ; relance nécessaire."
-        run.status = WorkflowStatus.ERROR
-        run.finished_at = _now()
-    if stale_runs:
+    if recovered:
         db.commit()
-    return len(stale_runs)
+    return len(recovered)
+
+
+def reserve_processing(db: Session, application: Application) -> WorkflowRun:
+    """Passe la candidature en PROCESSING et crée son run PENDING dans la même transaction."""
+    if not can_transition(application.status, ApplicationStatus.PROCESSING):
+        raise WorkflowError(f"Transition interdite: {application.status.value} vers PROCESSING.")
+    application.status = ApplicationStatus.PROCESSING
+    application.error_message = None
+    run = WorkflowRun(application_id=application.id, status=WorkflowStatus.PENDING)
+    db.add(run)
+    db.flush()
+    return run
 
 
 class ApplicationWorkflow:
@@ -137,17 +181,36 @@ class ApplicationWorkflow:
             raise WorkflowError(f"Workflow refusé pour le statut {application.status.value}.")
         job = db.get(Job, application.job_id)
         if job is None:
+            if application.status == ApplicationStatus.PROCESSING:
+                application.status = ApplicationStatus.ERROR
+                application.error_message = "Offre introuvable."
+                for run in db.scalars(
+                    select(WorkflowRun).where(
+                        WorkflowRun.application_id == application.id,
+                        WorkflowRun.status == WorkflowStatus.PENDING,
+                    )
+                ):
+                    run.status = WorkflowStatus.ERROR
+                    run.finished_at = _now()
+                db.commit()
             raise WorkflowError("Offre introuvable.")
 
         if not prestarted:
             self._transition(application, ApplicationStatus.PROCESSING)
         application.error_message = None
-        workflow_run = WorkflowRun(
-            application_id=application.id,
-            status=WorkflowStatus.RUNNING,
-            started_at=_now(),
+        workflow_run = db.scalar(
+            select(WorkflowRun)
+            .where(
+                WorkflowRun.application_id == application.id,
+                WorkflowRun.status == WorkflowStatus.PENDING,
+            )
+            .order_by(WorkflowRun.id.desc())
         )
-        db.add(workflow_run)
+        if workflow_run is None:
+            workflow_run = WorkflowRun(application_id=application.id)
+            db.add(workflow_run)
+        workflow_run.status = WorkflowStatus.RUNNING
+        workflow_run.started_at = _now()
         db.flush()
         self._mark = workflow_run.started_at
         try:
@@ -290,14 +353,23 @@ class ApplicationWorkflow:
 
     @staticmethod
     def _persist_requirements(db: Session, job: Job, requirements: Any, source_hash: str) -> None:
+        """Enregistre les exigences ; sûr si deux workflows de la même offre se croisent."""
+        data = requirements.model_dump(mode="json")
+        data[_SOURCE_HASH_KEY] = source_hash
         existing = db.scalar(
             select(StructuredRequirements).where(StructuredRequirements.job_id == job.id)
         )
-        data = requirements.model_dump(mode="json")
-        data[_SOURCE_HASH_KEY] = source_hash
         if existing is None:
-            db.add(StructuredRequirements(job_id=job.id, data=data))
-        else:
+            try:
+                with db.begin_nested():  # SAVEPOINT : un conflit n'invalide pas la transaction
+                    db.add(StructuredRequirements(job_id=job.id, data=data))
+                    db.flush()
+                return
+            except IntegrityError:
+                existing = db.scalar(
+                    select(StructuredRequirements).where(StructuredRequirements.job_id == job.id)
+                )
+        if existing is not None:
             existing.data = data
         db.flush()
 
@@ -471,8 +543,17 @@ class ApplicationWorkflow:
     def _finish_failure(
         self, db: Session, application: Application, workflow_run: WorkflowRun, exc: BaseException
     ) -> None:
+        message = _safe_error(exc)
+        application_id, run_id = application.id, workflow_run.id
+        if not db.is_active:  # flush échoué : on repart d'une transaction saine
+            db.rollback()
+        application = db.get(Application, application_id)
+        workflow_run = db.get(WorkflowRun, run_id)
+        if workflow_run is None:  # run annulé par le rollback : on garde une trace de l'échec
+            workflow_run = WorkflowRun(application_id=application_id, started_at=_now())
+            db.add(workflow_run)
         application.status = ApplicationStatus.ERROR
-        application.error_message = _safe_error(exc)
+        application.error_message = message
         workflow_run.status = WorkflowStatus.ERROR
         workflow_run.finished_at = _now()
         db.commit()
@@ -484,15 +565,27 @@ def run_batch(
     session_factory: Any,
     llm_client: LLMClient | None = None,
     prestarted: bool = False,
+    max_workers: int | None = None,
 ) -> dict[int, str]:
-    results: dict[int, str] = {}
-    for application_id in application_ids:
+    """Traite un lot de candidatures avec une concurrence bornée (WORKFLOW_MAX_CONCURRENCY).
+
+    Chaque candidature utilise sa propre session et son propre workflow : une erreur
+    sur l'une n'affecte jamais les autres.
+    """
+    ids = list(dict.fromkeys(application_ids))
+    workers = max(1, min(max_workers or get_settings().workflow_max_concurrency, len(ids) or 1))
+
+    def process(application_id: int) -> tuple[int, str]:
         db = session_factory()
         try:
             ApplicationWorkflow(llm_client).run(db, application_id, prestarted=prestarted)
-            results[application_id] = "completed"
+            return application_id, "completed"
         except WorkflowError:
-            results[application_id] = "error"
+            return application_id, "error"
         finally:
             db.close()
-    return results
+
+    if workers == 1:
+        return dict(process(application_id) for application_id in ids)
+    with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="workflow") as pool:
+        return dict(pool.map(process, ids))

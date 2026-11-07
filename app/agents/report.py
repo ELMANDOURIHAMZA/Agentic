@@ -1,5 +1,7 @@
 import logging
 import math
+import re
+import unicodedata
 from pathlib import Path
 
 from pydantic import BaseModel
@@ -11,13 +13,21 @@ from app.schemas.agent_outputs import (
     ReportOut,
     StructuredRequirementsOut,
 )
-from app.schemas.candidate import CandidateResultView
+from app.schemas.candidate import CandidateResultView, build_candidate_view
 from app.services.llm import LLMClient, LLMError
 
 logger = logging.getLogger(__name__)
 _PROMPT = (Path(__file__).parent / "prompts" / "report_agent.txt").read_text(encoding="utf-8")
 _HUMAN_REMINDER = "Le score est une aide à la décision ; la décision finale appartient à un humain."
-_SENSITIVE_MARKERS = ("cin", "date de naissance", "birth_date", "cin_number")
+_SENSITIVE_PATTERN = re.compile(
+    r"(?<![a-z0-9])(?:cin|cin_number|birth_date|date de naissance)(?![a-z0-9])"
+)
+
+
+def _normalize_for_scan(text: str) -> str:
+    """Minuscules sans accents : « CIN » est détecté, « médecin » ou « cinéma » ne le sont pas."""
+    decomposed = unicodedata.normalize("NFKD", text)
+    return "".join(c for c in decomposed if not unicodedata.combining(c)).casefold()
 
 
 class ReportInput(BaseModel):
@@ -124,8 +134,8 @@ class ReportAgent:
                 *report.inconsistencies,
                 *[criterion.justification for criterion in report.criteria],
             ]
-        ).casefold()
-        if any(marker in sensitive_text for marker in _SENSITIVE_MARKERS):
+        )
+        if _SENSITIVE_PATTERN.search(_normalize_for_scan(sensitive_text)):
             raise ReportAgentError("Le rapport contient une donnée sensible interdite.")
 
     @staticmethod
@@ -138,15 +148,10 @@ class ReportAgent:
 
     @staticmethod
     def candidate_view(data: ReportInput) -> CandidateResultView:
-        compliance = (
-            "Dossier conforme."
-            if data.document_verification.compliance_level >= 80
-            and not data.document_verification.inconsistencies
-            else "Vérifications incomplètes."
-        )
-        return CandidateResultView(
+        return build_candidate_view(
             global_score=data.matching.global_score,
             matching_skills=data.matching.matching_skills,
             missing_skills=data.matching.missing_skills,
-            compliance_summary=compliance,
+            compliance_level=data.document_verification.compliance_level,
+            has_inconsistencies=bool(data.document_verification.inconsistencies),
         )

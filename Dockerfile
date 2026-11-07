@@ -17,7 +17,6 @@ COPY app ./app
 COPY migrations ./migrations
 COPY alembic.ini ./
 COPY data ./data
-COPY scripts ./scripts
 
 RUN pip install --no-cache-dir .
 RUN mkdir -p /app/uploads && chown -R appuser:appuser /app

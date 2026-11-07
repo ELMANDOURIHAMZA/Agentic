@@ -18,8 +18,8 @@ from app.models import (
     WorkflowRun,
     WorkflowStepLog,
 )
-from app.orchestration.workflow import recover_stale_processing, run_batch
-from app.security.auth import new_csrf_token
+from app.orchestration.workflow import recover_stale_processing, reserve_processing, run_batch
+from app.security.auth import csrf_token_for, set_csrf_cookie
 from app.security.dependencies import require_admin
 from app.services.llm import LLMClient
 from app.services.presentation import review_reasons
@@ -45,11 +45,11 @@ def _response(
     context: dict[str, object],
     status_code: int = 200,
 ) -> HTMLResponse:
-    token = new_csrf_token()
+    token = csrf_token_for(request)
     response = request.app.state.templates.TemplateResponse(
         request, template, {**context, "csrf_token": token}, status_code=status_code
     )
-    response.set_cookie("csrf_token", token, httponly=False, samesite="lax")
+    set_csrf_cookie(response, token)
     return response
 
 
@@ -142,8 +142,7 @@ def _start_selected(
         }:
             ignored.append(application_id)
             continue
-        application.status = ApplicationStatus.PROCESSING
-        application.error_message = None
+        reserve_processing(db, application)  # statut + run PENDING : une seule transaction
         valid.append(application_id)
     llm_client = build_llm_client() if valid else None
     db.commit()

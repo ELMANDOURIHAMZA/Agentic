@@ -5,6 +5,7 @@
 uploads/
 real_dataset/
 *.pdf
+!data/fixtures/**/*.pdf
 *.dump
 *.sql
 *.sqlite

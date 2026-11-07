@@ -29,10 +29,30 @@ dossier incohérent. Sans modifier le score, l'interface signale « Revue humain
 obligatoire » quand la conformité est inférieure à 70/100 ou qu'une incohérence
 est de gravité élevée (détail admin, classement, tableau de bord, PDF).
 
+## Contrat de critères du Matching Agent
+
+Le LLM n'évalue que les critères sémantiques. Leur liste exacte est calculée par
+`expected_criteria_ids` : `degree` (seulement si un diplôme est exigé),
+`required_skill:<x>`, `preferred_skill:<x>`, `language:<x>`. Elle est transmise dans
+`<criteres_attendus>`. Une réponse avec un critère manquant, inconnu ou en double est
+rejetée (une nouvelle tentative, puis erreur de l'agent) : un critère absent n'est jamais
+compté comme un échec. La casse des identifiants est tolérée. Une preuve qui ne figure pas
+dans le profil ramène le verdict à « absent » avec une justification explicite.
+
 ## Barème de conformité documentaire
 
-L'agent 3 compare identité et année/intitulé du diplôme avec le CV par code
-déterministe. Départ à 100 ; document illisible −50 ; champ non vérifiable −10 ;
-prénom/nom en correspondance partielle −30, sans correspondance −50 ; année du
-diplôme divergente −20 (moyenne) ou −35 (élevée). Le niveau, borné à 0, est
-utilisé tel quel par le matching.
+L'agent 3 extrait l'identité de la CIN et le titulaire, l'intitulé, l'établissement et l'année
+du diplôme, puis les compare au CV par code déterministe. Départ à 100 :
+
+| Anomalie | Pénalité |
+|---|---|
+| Document illisible ou vide | −50 par document |
+| Information absente ou non lisible (jamais une fraude) | −10 |
+| Prénom ou nom CIN ↔ CV, titulaire du diplôme ↔ candidat : correspondance partielle | −30 |
+| Idem, sans correspondance | −50 |
+| Intitulé du diplôme ↔ CV : partiel / aucun mot en commun | −10 / −20 |
+| Année du diplôme divergente (< 5 ans / ≥ 5 ans) | −20 / −35 |
+
+Le niveau est borné à 0 et utilisé tel quel par le matching. Chaque anomalie porte un
+type (`identity`, `diploma_holder`, `diploma_title`, `year`, `institution`, `missing`,
+`unreadable`) et une explication.

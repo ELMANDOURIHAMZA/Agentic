@@ -1,5 +1,9 @@
 # Évaluation du matching
 
+> **Document historique.** Sortie du 2026-10-30 produite avec un serveur LLM factice par un script
+> qui n'est pas livré dans ce dépôt. Elle n'est donc ni reproductible ici ni une preuve de la
+> qualité d'un modèle réel. Les preuves reproductibles sont dans `tests/` (voir `TEST_PLAN.md`).
+
 Généré le 2026-10-30 — fournisseur `ollama`, modèle `stub`, 3 exécution(s) par candidat.
 
 > **Attention** : `LLM_BASE_URL` est défini (serveur factice). Ces chiffres valident le code (parsing, validation, scoring, workflow), **pas la qualité d'un modèle réel**.

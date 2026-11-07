@@ -1,3 +1,4 @@
+import json
 import logging
 import re
 import unicodedata
@@ -17,6 +18,7 @@ from app.schemas.agent_outputs import (
 from app.services.llm import LLMClient, LLMError
 
 logger = logging.getLogger(__name__)
+_MAX_CONTRACT_ATTEMPTS = 2
 _PROMPT = (Path(__file__).parent / "prompts" / "matching_agent.txt").read_text(encoding="utf-8")
 
 DEFAULT_MATCHING_WEIGHTS = {
@@ -56,6 +58,37 @@ class MatchingInput(BaseModel):
 
 Verdict = Literal["match", "partiel", "absent"]
 
+# Contrat unique de nommage des critères évalués par le LLM. Les critères
+# « experience » et « documents » sont calculés par du code et ne sont jamais
+# demandés au modèle.
+DEGREE_ID = "degree"
+REQUIRED_SKILL_PREFIX = "required_skill:"
+PREFERRED_SKILL_PREFIX = "preferred_skill:"
+LANGUAGE_PREFIX = "language:"
+
+
+def required_skill_id(value: str) -> str:
+    return f"{REQUIRED_SKILL_PREFIX}{value}"
+
+
+def preferred_skill_id(value: str) -> str:
+    return f"{PREFERRED_SKILL_PREFIX}{value}"
+
+
+def language_id(value: str) -> str:
+    return f"{LANGUAGE_PREFIX}{value}"
+
+
+def expected_criteria_ids(requirements: StructuredRequirementsOut) -> list[str]:
+    """Liste exacte, ordonnée et sans doublon des identifiants que le LLM doit renvoyer."""
+    ids: list[str] = []
+    if requirements.required_degree.strip():
+        ids.append(DEGREE_ID)
+    ids.extend(required_skill_id(value) for value in requirements.required_skills)
+    ids.extend(preferred_skill_id(value) for value in requirements.preferred_skills)
+    ids.extend(language_id(value) for value in requirements.languages)
+    return list(dict.fromkeys(ids))
+
 
 class SemanticCriterionOut(BaseModel):
     name: str = Field(min_length=1, max_length=150)
@@ -70,6 +103,39 @@ class SemanticEvaluationOut(BaseModel):
 
 class MatchingAgentError(RuntimeError):
     """Erreur explicite de l'agent de matching."""
+
+
+class CriteriaContractError(ValueError):
+    """La sortie du LLM ne respecte pas la liste de critères attendus."""
+
+
+def validate_criteria_contract(
+    expected: list[str], semantic: SemanticEvaluationOut
+) -> SemanticEvaluationOut:
+    """Exige exactement un verdict par critère attendu, sans inconnu ni doublon.
+
+    Les identifiants sont comparés sans tenir compte de la casse ni des espaces
+    superflus, puis ramenés à leur forme canonique.
+    """
+    canonical = {" ".join(item.split()).casefold(): item for item in expected}
+    seen: dict[str, SemanticCriterionOut] = {}
+    unknown: list[str] = []
+    duplicates: list[str] = []
+    for item in semantic.criteria:
+        key = " ".join(item.name.split()).casefold()
+        target = canonical.get(key)
+        if target is None:
+            unknown.append(item.name)
+        elif target in seen:
+            duplicates.append(target)
+        else:
+            seen[target] = item.model_copy(update={"name": target})
+    missing = [item for item in expected if item not in seen]
+    if unknown or duplicates or missing:
+        raise CriteriaContractError(
+            f"Critères inconnus: {unknown}; doublons: {duplicates}; manquants: {missing}."
+        )
+    return SemanticEvaluationOut(criteria=[seen[item] for item in expected])
 
 
 # Unification des variantes arabes courantes (alef, ya, ta marbuta) et suppression du tatweel.
@@ -125,16 +191,37 @@ class MatchingAgent:
                 )
             }
         )
-        request = (
+        expected = expected_criteria_ids(data.requirements)
+        base_request = (
             f"<exigences>\n{data.requirements.model_dump_json()}\n</exigences>\n"
-            f"<profil_non_fiable>\n{safe_profile.model_dump_json(exclude_none=True)}\n</profil_non_fiable>\n"
-            f"<verification>\n{data.document_verification.model_dump_json()}\n</verification>"
+            f"<profil_non_fiable>\n{safe_profile.model_dump_json(exclude_none=True)}\n"
+            "</profil_non_fiable>\n"
+            f"<verification>\n{data.document_verification.model_dump_json()}\n</verification>\n"
+            "<criteres_attendus>\n"
+            f"{json.dumps(expected, ensure_ascii=False)}\n</criteres_attendus>"
         )
-        try:
-            semantic = self._llm_client.generate_structured(_PROMPT, request, SemanticEvaluationOut)
-        except (LLMError, ValueError, TypeError) as exc:
-            logger.error("MatchingAgent échoué: %s", type(exc).__name__)
-            raise MatchingAgentError("L'évaluation du matching a échoué.") from exc
+        semantic = SemanticEvaluationOut()
+        previous_error: str | None = None
+        for _attempt in range(_MAX_CONTRACT_ATTEMPTS):
+            request = base_request
+            if previous_error:
+                request += (
+                    f"\n<erreur_validation_precedente>\n{previous_error}\n"
+                    "</erreur_validation_precedente>"
+                )
+            try:
+                raw = self._llm_client.generate_structured(_PROMPT, request, SemanticEvaluationOut)
+            except (LLMError, ValueError, TypeError) as exc:
+                logger.error("MatchingAgent échoué: %s", type(exc).__name__)
+                raise MatchingAgentError("L'évaluation du matching a échoué.") from exc
+            try:
+                semantic = validate_criteria_contract(expected, raw)
+                break
+            except CriteriaContractError as exc:
+                previous_error = str(exc)
+                logger.warning("MatchingAgent contrat de critères rejeté: %s", previous_error)
+        else:
+            raise MatchingAgentError("Le LLM n'a pas respecté la liste des critères attendus.")
         return self._calculate(data, semantic)
 
     def _calculate(self, data: MatchingInput, semantic: SemanticEvaluationOut) -> MatchingOut:
@@ -187,10 +274,18 @@ class MatchingAgent:
     @staticmethod
     def _verified(item: SemanticCriterionOut, profile_text: str) -> SemanticCriterionOut:
         if item.verdict != "absent" and not item.evidence:
-            return item.model_copy(update={"verdict": "absent"})
+            return item.model_copy(
+                update={"verdict": "absent", "justification": "Aucune preuve fournie par le LLM."}
+            )
         normalized = [_norm(evidence) for evidence in item.evidence]
         if any(not text or text not in profile_text for text in normalized):
-            return item.model_copy(update={"verdict": "absent", "evidence": []})
+            return item.model_copy(
+                update={
+                    "verdict": "absent",
+                    "evidence": [],
+                    "justification": "Preuve citée absente du profil : verdict ramené à absent.",
+                }
+            )
         return item
 
     def _criterion_score(
@@ -216,21 +311,21 @@ class MatchingAgent:
                 [],
             )
         if criterion == "degree":
-            return self._aggregate("degree", evaluations)
+            return self._aggregate(DEGREE_ID, evaluations)
         if criterion == "languages":
             return self._aggregate_items(
-                "language", data.requirements.languages, evaluations, matching, missing
+                LANGUAGE_PREFIX, data.requirements.languages, evaluations, matching, missing
             )
         if criterion == "required_skills":
             return self._aggregate_items(
-                "required_skill",
+                REQUIRED_SKILL_PREFIX,
                 data.requirements.required_skills,
                 evaluations,
                 matching,
                 missing,
             )
         return self._aggregate_items(
-            "preferred_skill",
+            PREFERRED_SKILL_PREFIX,
             data.requirements.preferred_skills,
             evaluations,
             matching,
@@ -242,8 +337,8 @@ class MatchingAgent:
         name: str, evaluations: dict[str, SemanticCriterionOut]
     ) -> tuple[float, str, list[str]]:
         item = evaluations.get(name)
-        if item is None:
-            return 0.0, "Aucune évaluation vérifiable.", []
+        if item is None:  # inatteignable : le contrat de critères est validé avant le calcul
+            raise MatchingAgentError(f"Verdict manquant pour le critère {name}.")
         return _verdict_score(item.verdict), item.justification, item.evidence
 
     def _aggregate_items(
@@ -257,12 +352,14 @@ class MatchingAgent:
         scores: list[float] = []
         evidence: list[str] = []
         for value in values:
-            item = evaluations.get(f"{prefix}:{value}")
-            score = _verdict_score(item.verdict) if item else 0.0
+            item = evaluations.get(f"{prefix}{value}")
+            if item is None:  # inatteignable : contrat validé avant le calcul
+                raise MatchingAgentError(f"Verdict manquant pour {prefix}{value}.")
+            score = _verdict_score(item.verdict)
             scores.append(score)
             if score:
                 matching.append(value)
-                evidence.extend(item.evidence if item else [])
+                evidence.extend(item.evidence)
             else:
                 missing.append(value)
         return sum(scores) / len(scores), "Moyenne des verdicts par élément.", evidence

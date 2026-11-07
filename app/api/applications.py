@@ -27,7 +27,7 @@ from app.models import (
     User,
     UserRole,
 )
-from app.security.auth import new_csrf_token
+from app.security.auth import csrf_token_for, set_csrf_cookie
 from app.security.dependencies import get_current_user, require_candidate
 from app.services.application_state import can_transition
 from app.services.document_reader import DocumentReadError, resolve_upload_path
@@ -49,11 +49,11 @@ def _job_or_404(db: Session, job_id: int) -> Job:
 
 
 def _wizard_response(request: Request, job: Job, error: str | None = None) -> HTMLResponse:
-    token = new_csrf_token()
+    token = csrf_token_for(request)
     response = request.app.state.templates.TemplateResponse(
         request, "public/application_wizard.html", {"job": job, "csrf_token": token, "error": error}
     )
-    response.set_cookie("csrf_token", token, httponly=False, samesite="lax")
+    set_csrf_cookie(response, token)
     return response
 
 
