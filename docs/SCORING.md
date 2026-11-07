@@ -11,7 +11,9 @@ ramenée sur 100 puis convertie en ratio. Le score final est borné à 0–100 e
 arrondi à une décimale.
 
 Une catégorie sans exigence est exclue du dénominateur puis son poids est
-redistribué proportionnellement entre les catégories ayant une exigence. Elle
+redistribué proportionnellement entre les catégories ayant une exigence. Le
+diplôme est facultatif : lorsque l'offre ne précise aucun diplôme demandé,
+l'Agent 1 conserve le champ vide et le Matching Agent exclut ce critère. Elle
 ne vaut donc ni zéro ni 100 par défaut.
 
 Exemple : exigences obligatoires 40 % à 100 %, expérience 20 % à 50 %,
@@ -31,8 +33,9 @@ est de gravité élevée (détail admin, classement, tableau de bord, PDF).
 
 ## Barème de conformité documentaire
 
-L'agent 3 compare identité et année/intitulé du diplôme avec le CV par code
-déterministe. Départ à 100 ; document illisible −50 ; champ non vérifiable −10 ;
+L'agent 3 extrait avec le LLM les identités de la CIN et du diplôme, puis
+compare par code déterministe le nom/prénom du CV, de la CIN et le titulaire du
+diplôme, ainsi que l'année du diplôme. Départ à 100 ; document illisible −50 ; champ non vérifiable −10 ;
 prénom/nom en correspondance partielle −30, sans correspondance −50 ; année du
 diplôme divergente −20 (moyenne) ou −35 (élevée). Le niveau, borné à 0, est
 utilisé tel quel par le matching.

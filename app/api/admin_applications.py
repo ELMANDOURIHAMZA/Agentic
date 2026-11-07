@@ -56,10 +56,10 @@ def _response(
 def build_llm_client() -> LLMClient:
     settings = get_settings()
     provider = settings.llm_provider.casefold().strip()
-    if provider not in {"anthropic", "openai", "gemini", "ollama"}:
-        raise HTTPException(status_code=503, detail="Fournisseur LLM mal configuré.")
-    if provider != "ollama" and not (settings.llm_api_key or "").strip():
-        raise HTTPException(status_code=503, detail="Clé LLM absente.")
+    if provider != "groq":
+        raise HTTPException(status_code=503, detail="Seul le fournisseur Groq est accepté.")
+    if not (settings.llm_api_key or "").strip():
+        raise HTTPException(status_code=503, detail="Clé Groq absente (GROQ_API_KEY).")
     return LLMClient()
 
 

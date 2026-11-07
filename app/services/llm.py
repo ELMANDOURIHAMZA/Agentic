@@ -11,29 +11,24 @@ from app.config import get_settings
 logger = logging.getLogger(__name__)
 OutputModel = TypeVar("OutputModel", bound=BaseModel)
 Transport = Callable[[str, dict[str, Any], float], Any]
+GROQ_BASE_URL = "https://api.groq.com/openai/v1"
 
 
 class LLMError(RuntimeError):
-    """Erreur explicite d'appel ou de validation du fournisseur LLM."""
+    """Erreur explicite d'appel ou de validation de Groq."""
 
 
 class LLMRateLimitError(LLMError):
-    """Limitation temporaire du fournisseur LLM, réessayable."""
+    """Limitation temporaire du fournisseur Groq, réessayable."""
 
     def __init__(self, message: str, retry_after: float | None = None) -> None:
         super().__init__(message)
         self.retry_after = retry_after
 
 
-DEFAULT_BASE_URLS = {
-    "ollama": "http://127.0.0.1:11434",
-    "openai": "https://api.openai.com",
-    "anthropic": "https://api.anthropic.com",
-    "gemini": "https://generativelanguage.googleapis.com",
-}
-
-
 class LLMClient:
+    """Client HTTP Groq pour générer et valider des sorties JSON structurées."""
+
     def __init__(
         self,
         transport: Transport | None = None,
@@ -52,118 +47,88 @@ class LLMClient:
     ) -> OutputModel:
         settings = get_settings()
         provider = settings.llm_provider.casefold().strip()
-        if provider not in {"anthropic", "openai", "gemini", "ollama"}:
-            raise LLMError(f"Fournisseur LLM non supporté: {settings.llm_provider}")
-        if provider != "ollama" and not (settings.llm_api_key or "").strip():
-            raise LLMError(f"Clé API absente pour le fournisseur {provider}.")
+        if provider != "groq":
+            raise LLMError("Seul le fournisseur Groq est configuré pour ce projet.")
+        api_key = (settings.llm_api_key or "").strip()
+        if not api_key:
+            raise LLMError("Clé API Groq absente (GROQ_API_KEY).")
+        if not settings.llm_model:
+            raise LLMError("Identifiant du modèle Groq absent (LLM_MODEL).")
 
-        last_error: str | None = None
-        max_attempts = settings.llm_max_retries + 1
-        for attempt in range(max_attempts):
-            try:
-                raw = self._generate(provider, prompt, input_data, schema, last_error)
-                payload = json.loads(raw) if isinstance(raw, str) else raw
-                return schema.model_validate(payload)
-            except (json.JSONDecodeError, TypeError, ValidationError) as exc:
-                last_error = str(exc)
-                if attempt + 1 == max_attempts:
-                    raise LLMError(
-                        f"Sortie LLM invalide après {max_attempts} tentative(s)."
-                    ) from exc
-            except LLMRateLimitError as exc:
-                if attempt + 1 == max_attempts:
-                    raise LLMError(
-                        f"Limite du fournisseur atteinte après {max_attempts} tentative(s)."
-                    ) from exc
-                settings = get_settings()
-                delay = exc.retry_after or (settings.llm_retry_backoff_seconds * (2**attempt))
-                self._sleep(min(delay, 60.0))
-            except LLMError:
-                raise
-            except Exception as exc:
-                raise LLMError("Erreur lors de l'appel au fournisseur LLM.") from exc
-        raise LLMError("Le fournisseur LLM n'a produit aucune sortie.")
-
-    def _generate(
-        self,
-        provider: str,
-        prompt: str,
-        input_data: Any,
-        schema: type[OutputModel],
-        previous_error: str | None,
-    ) -> Any:
         request = {
             "prompt": prompt,
             "input": input_data,
             "schema": schema.model_json_schema(),
-            "previous_validation_error": previous_error,
         }
-        if self._transport is not None:
-            return self._transport(provider, request, get_settings().llm_timeout_seconds)
-        return self._generate_with_provider(provider, request)
+        last_error: str | None = None
+        max_attempts = settings.llm_max_retries + 1
+        for attempt in range(max_attempts):
+            try:
+                payload = self._generate(request, last_error)
+                raw = payload
+                if isinstance(payload, dict) and "choices" in payload:
+                    raw = payload["choices"][0]["message"]["content"]
+                parsed = json.loads(raw) if isinstance(raw, str) else raw
+                return schema.model_validate(parsed)
+            except (json.JSONDecodeError, TypeError, ValidationError, KeyError, IndexError) as exc:
+                last_error = str(exc)
+                if attempt + 1 == max_attempts:
+                    raise LLMError(
+                        f"Sortie Groq invalide après {max_attempts} tentative(s)."
+                    ) from exc
+            except LLMRateLimitError as exc:
+                if attempt + 1 == max_attempts:
+                    raise LLMError(
+                        f"Limite Groq atteinte après {max_attempts} tentative(s)."
+                    ) from exc
+                delay = exc.retry_after
+                if delay is None:
+                    delay = settings.llm_retry_backoff_seconds * (2**attempt)
+                self._sleep(min(delay, 60.0))
+            except LLMError:
+                raise
+            except Exception as exc:
+                logger.warning("Erreur d'appel Groq: %s", type(exc).__name__)
+                raise LLMError("Erreur lors de l'appel au fournisseur Groq.") from exc
+        raise LLMError("Groq n'a produit aucune sortie.")
 
-    def _generate_with_provider(self, provider: str, request: dict[str, Any]) -> Any:
+    def _generate(self, request: dict[str, Any], previous_error: str | None) -> Any:
+        if self._transport is not None:
+            return self._transport(
+                "groq",
+                {**request, "previous_validation_error": previous_error},
+                get_settings().llm_timeout_seconds,
+            )
+        return self._generate_with_groq({**request, "previous_validation_error": previous_error})
+
+    def _generate_with_groq(self, request: dict[str, Any]) -> str:
         import httpx
 
         settings = get_settings()
         post = self._http_post or httpx.post
-        base = (settings.llm_base_url or DEFAULT_BASE_URLS[provider]).rstrip("/")
+        base = (settings.llm_base_url or GROQ_BASE_URL).rstrip("/")
         try:
-            if provider == "ollama":
-                response = post(
-                    f"{base}/api/generate",
-                    json={
-                        "model": settings.llm_model,
-                        "prompt": json.dumps(request),
-                        "format": "json",
-                    },
-                    timeout=settings.llm_timeout_seconds,
-                )
-                response.raise_for_status()
-                return response.json()["response"]
-
-            headers = {"Authorization": f"Bearer {settings.llm_api_key}"}
-            if provider == "openai":
-                response = post(
-                    f"{base}/v1/chat/completions",
-                    headers=headers,
-                    json={
-                        "model": settings.llm_model,
-                        "response_format": {"type": "json_object"},
-                        "messages": [{"role": "user", "content": json.dumps(request)}],
-                    },
-                    timeout=settings.llm_timeout_seconds,
-                )
-                response.raise_for_status()
-                return response.json()["choices"][0]["message"]["content"]
-
-            if provider == "anthropic":
-                response = post(
-                    f"{base}/v1/messages",
-                    headers={
-                        "x-api-key": settings.llm_api_key or "",
-                        "anthropic-version": "2023-06-01",
-                    },
-                    json={
-                        "model": settings.llm_model,
-                        "max_tokens": 4096,
-                        "messages": [{"role": "user", "content": json.dumps(request)}],
-                    },
-                    timeout=settings.llm_timeout_seconds,
-                )
-                response.raise_for_status()
-                return response.json()["content"][0]["text"]
-
             response = post(
-                f"{base}/v1beta/models/{settings.llm_model}:generateContent",
-                params={"key": settings.llm_api_key},
-                json={"contents": [{"parts": [{"text": json.dumps(request)}]}]},
+                f"{base}/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {settings.llm_api_key}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": settings.llm_model,
+                    "temperature": 0,
+                    "response_format": {"type": "json_object"},
+                    "messages": [
+                        {
+                            "role": "user",
+                            "content": json.dumps(request, ensure_ascii=False),
+                        }
+                    ],
+                },
                 timeout=settings.llm_timeout_seconds,
             )
             response.raise_for_status()
-            return response.json()["candidates"][0]["content"]["parts"][0]["text"]
-        except (KeyError, IndexError, TypeError, ValueError) as exc:
-            raise LLMError("Réponse inattendue du fournisseur LLM.") from exc
+            return response.json()["choices"][0]["message"]["content"]
         except httpx.HTTPStatusError as exc:
             if exc.response.status_code == 429:
                 retry_after: float | None = None
@@ -173,7 +138,9 @@ class LLMClient:
                         retry_after = max(0.0, float(raw_retry_after))
                     except ValueError:
                         retry_after = None
-                raise LLMRateLimitError("Limite du fournisseur LLM.", retry_after) from exc
-            raise LLMError("Erreur HTTP du fournisseur LLM.") from exc
+                raise LLMRateLimitError("Limite de débit Groq.", retry_after) from exc
+            raise LLMError("Erreur HTTP du fournisseur Groq.") from exc
         except httpx.HTTPError as exc:
-            raise LLMError("Erreur HTTP du fournisseur LLM.") from exc
+            raise LLMError("Erreur HTTP du fournisseur Groq.") from exc
+        except (KeyError, IndexError, TypeError, ValueError) as exc:
+            raise LLMError("Réponse inattendue du fournisseur Groq.") from exc

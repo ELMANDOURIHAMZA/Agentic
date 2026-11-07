@@ -74,9 +74,10 @@ refuse les valeurs d'exemple.
 | `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_PORT` | PostgreSQL Docker |
 | `SECRET_KEY` | signature des sessions |
 | `APP_ENV` | `development`, `test` ou autre environnement |
-| `LLM_PROVIDER`, `LLM_API_KEY`, `LLM_MODEL`, `LLM_BASE_URL` | fournisseur LLM (OpenAI recommandé, ou anthropic, gemini, ollama) ; `LLM_BASE_URL` remplace l'URL de base ; aucun appel réseau dans les tests |
+| `LLM_PROVIDER=groq`, `GROQ_API_KEY`, `LLM_MODEL`, `LLM_BASE_URL` | API Groq uniquement ; modèle hébergé par Groq par défaut `openai/gpt-oss-120b` ; URL personnalisée facultative |
 | `LLM_TIMEOUT_SECONDS`, `LLM_MAX_RETRIES` | limites d'appel |
 | `WORKFLOW_STALE_TIMEOUT_SECONDS` | délai de récupération d'un run abandonné |
+| `WORKFLOW_BATCH_CONCURRENCY` | nombre maximal de candidatures traitées simultanément (1 à 8, défaut 3) |
 | `MATCHING_*_WEIGHT` | six pondérations du score, total 100 |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_STARTTLS` | notifications |
 | `ADMIN_NOTIFICATION_EMAIL` | destinataire admin |
@@ -119,6 +120,36 @@ Le conteneur applicatif exécute `alembic upgrade head` avant Uvicorn. Les
 uploads sont conservés dans le volume `recruitment_uploads`. La base et ce
 volume ne sont pas supprimés par `docker compose down`.
 
+## Dataset fictif de démonstration
+
+Après l'installation locale et l'application des migrations, générer le jeu de
+données demandé (2 offres publiées, 5 candidats, 5 candidatures en attente et
+15 documents fictifs (14 PDF et 1 CV DOCX en arabe)) :
+
+```powershell
+.\\.venv\\Scripts\\python.exe -m scripts.seed_demo_data
+```
+
+Le script est réexécutable : il remplace les précédents comptes/offres marqués
+comme données de démonstration. Les documents générés sont stockés dans
+`UPLOAD_DIR`, pas dans Git. Aucun workflow IA n'est déclenché par le seed ;
+l'administrateur doit toujours cliquer sur « Lancer le traitement ».
+
+Comptes candidats de démonstration (mot de passe commun) :
+
+| Candidat | Email |
+|---|---|
+| Amina Benali | `amina.benali@example.test` |
+| Youssef Berrada | `youssef.berrada@example.test` |
+| Karim El Idrissi | `karim.elidrissi@example.test` |
+| Sarah Bennani | `sarah.bennani@example.test` |
+| Ines Amrani | `ines.amrani@example.test` |
+
+Mot de passe : `Demo-Candidate-2026!`. Ces comptes sont réservés à la
+démonstration locale ; ne pas réutiliser ce mot de passe en production.
+Le dossier de Sarah contient une incohérence volontaire entre le nom du CV/CIN
+et celui du titulaire figurant sur le diplôme.
+
 ## Données de livraison académique
 
 La livraison académique n'embarque aucun CV, diplôme ou CIN réel. Les archives
@@ -144,9 +175,10 @@ passage à `PROCESSING`.
 docker compose config
 ```
 
-Les tests unitaires couvrent les schémas et les fonctions déterministes sans
-fournisseur simulé. Les tests marqués `integration` effectuent de vrais appels
-au fournisseur configuré uniquement lorsque `RUN_REAL_LLM_TESTS=1` est défini.
+Les tests unitaires du transport Groq utilisent un faux serveur HTTP et ne
+consomment aucun quota. Les tests marqués `integration` effectuent de vrais
+appels à Groq uniquement lorsque `RUN_REAL_LLM_TESTS=1` et `GROQ_API_KEY` sont
+définis. Ils peuvent consommer du quota Groq.
 Ne jamais placer la clé dans Git ou dans les logs.
 
 ## Structure
@@ -157,25 +189,27 @@ app/api/          routes publiques, candidat et admin
 app/models/       modèles SQLAlchemy
 app/orchestration workflow et récupération des runs
 app/services/     stockage, lecture, emails et client LLM
-app/services/llm.py client des fournisseurs LLM réels
+app/services/llm.py client HTTP Groq réel
 migrations/       Alembic
 scripts/          outils de maintenance non métier
 tests/            tests unitaires, intégration et sécurité
 docs/             architecture, sécurité, démonstration et plan de test
 ```
 
-## Intégration LLM réelle
+## Intégration LLM Groq réelle
 
-Les tests d'intégration sont opt-in et utilisent exclusivement le fournisseur
-configuré dans les variables d'environnement :
+Le projet utilise exclusivement l'API Chat Completions de Groq. Le modèle par défaut `openai/gpt-oss-120b` est hébergé par Groq : le nom du modèle ne signifie pas que le service OpenAI est appelé. Définir `GROQ_API_KEY` dans le fichier `.env` local (ne jamais la commiter) et `LLM_PROVIDER=groq`. Le modèle reste configurable avec `LLM_MODEL`.
+
+Les tests d'intégration sont opt-in et appellent directement Groq :
 
 ```powershell
 $env:RUN_REAL_LLM_TESTS="1"
+$env:LLM_PROVIDER="groq"
 .\.venv\Scripts\python.exe -m pytest -m integration
 ```
 
-Cette commande peut consommer du quota fournisseur. Aucun CV réel n'est inclus
-dans le workspace de livraison.
+Cette commande consomme le quota du compte Groq. Les tests unitaires ne font
+aucun appel réseau. Aucun CV réel n'est inclus dans le workspace de livraison.
 
 ## Limites connues
 
@@ -184,5 +218,5 @@ L'ordre des scores peut varier avec un vrai LLM. La limitation de tentatives de 
 mémoire. Les emails ne sont pas relancés automatiquement après un crash. La
 recherche accent-insensible est en mémoire. Les preuves du matching doivent
 être présentes dans le texte du profil (comparaison insensible à la casse et aux
-accents). Aucun appel à un vrai LLM n'est évalué automatiquement sans clé configurée.
+accents). Aucun appel à Groq n'est effectué par les tests unitaires sans activation explicite des tests d'intégration.
 Les langues sont comptées dans `matching_skills`/`missing_skills`.

@@ -39,14 +39,15 @@ class ReportAgent:
         safe_profile = data.profile.model_copy(
             update={
                 "declared_identity": data.profile.declared_identity.model_copy(
-                    update={"birth_date": None}
+                    update={"first_name": None, "last_name": None, "birth_date": None}
                 )
             }
         )
+        safe_verification = self._redact_verification(data.document_verification)
         base_request = (
             f"<exigences>\n{data.requirements.model_dump_json()}\n</exigences>\n"
             f"<profil_non_fiable>\n{safe_profile.model_dump_json(exclude_none=True)}\n</profil_non_fiable>\n"
-            f"<verification>\n{data.document_verification.model_dump_json()}\n</verification>\n"
+            f"<verification>\n{safe_verification.model_dump_json()}\n</verification>\n"
             f"<matching>\n{data.matching.model_dump_json()}\n</matching>"
         )
         previous_error: str | None = None
@@ -69,6 +70,45 @@ class ReportAgent:
                 logger.error("ReportAgent échoué: %s", type(exc).__name__)
                 raise ReportAgentError("La génération du rapport a échoué.") from exc
         raise ReportAgentError("La génération du rapport a échoué après validation.")
+
+    @staticmethod
+    def _redact_verification(
+        verification: DocumentVerificationOut,
+    ) -> DocumentVerificationOut:
+        """Hide identity values from Groq; trusted data is restored in the admin report."""
+        identity_fields = {
+            "prénom",
+            "nom",
+            "prénom du titulaire du diplôme",
+            "nom du titulaire du diplôme",
+            "titulaire du diplôme",
+        }
+        inconsistencies = [
+            item.model_copy(
+                update={
+                    "cv_value": "[identité masquée]",
+                    "document_value": "[identité masquée]",
+                }
+            )
+            if item.field in identity_fields
+            else item
+            for item in verification.inconsistencies
+        ]
+        diploma_info = dict(verification.diploma_info)
+        for field in ("holder_first_name", "holder_last_name"):
+            if diploma_info.get(field):
+                diploma_info[field] = "[masqué]"
+        cin_info = dict(verification.cin_info)
+        for field in ("first_name", "last_name", "birth_date", "cin_number"):
+            if cin_info.get(field):
+                cin_info[field] = "[masqué]"
+        return verification.model_copy(
+            update={
+                "diploma_info": diploma_info,
+                "cin_info": cin_info,
+                "inconsistencies": inconsistencies,
+            }
+        )
 
     @staticmethod
     def _align_verified_fields(data: ReportInput, report: ReportOut) -> ReportOut:

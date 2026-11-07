@@ -32,6 +32,8 @@ class VerificationExtractionOut(BaseModel):
     last_name: str | None = Field(default=None, max_length=100)
     birth_date: str | None = Field(default=None, max_length=30)
     cin_number: str | None = Field(default=None, max_length=100)
+    diploma_first_name: str | None = Field(default=None, max_length=100)
+    diploma_last_name: str | None = Field(default=None, max_length=100)
     diploma_title: str | None = Field(default=None, max_length=300)
     institution: str | None = Field(default=None, max_length=300)
     graduation_year: int | None = Field(default=None, ge=1900, le=2100)
@@ -41,10 +43,25 @@ class DocumentVerificationAgentError(RuntimeError):
     """Erreur explicite de l'agent de vérification documentaire."""
 
 
+_ARABIC_FOLD = str.maketrans(
+    {
+        "أ": "ا",
+        "إ": "ا",
+        "آ": "ا",
+        "ٱ": "ا",
+        "ى": "ي",
+        "ة": "ه",
+        "ـ": None,
+    }
+)
+
+
 def _normalized(value: str) -> str:
     decomposed = unicodedata.normalize("NFKD", value)
-    without_accents = "".join(char for char in decomposed if not unicodedata.combining(char))
-    return re.sub(r"[^a-z0-9]+", " ", without_accents.casefold()).strip()
+    without_marks = "".join(char for char in decomposed if not unicodedata.combining(char))
+    folded = without_marks.translate(_ARABIC_FOLD).casefold()
+    # isalnum() preserves Arabic and other Unicode letters instead of deleting them.
+    return "".join(char if char.isalnum() else " " for char in folded).strip()
 
 
 def _name_matches(left: str | None, right: str | None) -> bool:
@@ -73,7 +90,7 @@ def _cv_year(profile: ExtractedProfileOut) -> int | None:
 
 
 class DocumentVerificationAgent:
-    """Extrait puis compare les justificatifs au CV sans LLM.
+    """Extrait les justificatifs avec le LLM puis compare les champs par code déterministe.
 
     Barème : base 100 ; -50 par justificatif illisible ou vide ; -10 par
     champ non vérifiable ; -30 pour un nom partiellement divergent ; -50 pour
@@ -114,6 +131,8 @@ class DocumentVerificationAgent:
         inconsistencies: list[InconsistencyOut] = []
         compliance = 100.0
         diploma_info = {
+            "holder_first_name": extracted.diploma_first_name or "",
+            "holder_last_name": extracted.diploma_last_name or "",
             "title": extracted.diploma_title or "",
             "institution": extracted.institution or "",
             "graduation_year": str(extracted.graduation_year or ""),
@@ -164,6 +183,37 @@ class DocumentVerificationAgent:
                         field=field,
                         cv_value=cv_value,
                         document_value=document_value,
+                        severity=severity,
+                    )
+                )
+                compliance -= 30 if severity == "medium" else 50
+
+        # Compare également le titulaire figurant sur le diplôme à l'identité de la CIN.
+        diploma_identity = (
+            extracted.diploma_first_name,
+            extracted.diploma_last_name,
+        )
+        cin_identity = (extracted.first_name, extracted.last_name)
+        for label, cin_value, diploma_value in zip(
+            ("prénom du titulaire du diplôme", "nom du titulaire du diplôme"),
+            cin_identity,
+            diploma_identity,
+            strict=True,
+        ):
+            if not cin_value or not diploma_value:
+                inconsistencies.append(self._missing(label, cin_value, diploma_value))
+                compliance -= 10
+            elif not _name_matches(cin_value, diploma_value):
+                severity = (
+                    "medium"
+                    if set(_normalized(cin_value).split()) & set(_normalized(diploma_value).split())
+                    else "high"
+                )
+                inconsistencies.append(
+                    InconsistencyOut(
+                        field=label,
+                        cv_value=cin_value,
+                        document_value=diploma_value,
                         severity=severity,
                     )
                 )
