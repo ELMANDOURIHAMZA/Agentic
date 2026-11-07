@@ -1,0 +1,25 @@
+{% extends "public/base.html" %}
+{% block title %}Offres publiées{% endblock %}
+{% block content %}
+<h1 class="mb-4">Offres publiées</h1>
+<form class="row g-2 mb-4" method="get" action="/">
+  <div class="col-12 col-md-9"><input class="form-control" name="q" value="{{ q }}" placeholder="Titre, compétence ou localisation"></div>
+  <div class="col-12 col-md-3"><button class="btn btn-primary w-100">Rechercher</button></div>
+</form>
+{% for job in jobs %}
+<article class="card mb-3">
+  <div class="card-body">
+    <h2 class="h4"><a href="/jobs/{{ job.id }}">{{ job.title }}</a></h2>
+    <p class="text-muted">{{ job.location or "Localisation non précisée" }}</p>
+    <p>{{ job.description[:240] }}{% if job.description|length > 240 %}…{% endif %}</p>
+  </div>
+</article>
+{% else %}<p>Aucune offre publiée ne correspond à votre recherche.</p>{% endfor %}
+{% if total_pages > 1 %}
+<nav aria-label="Pagination"><ul class="pagination">
+  {% for number in range(1, total_pages + 1) %}
+  <li class="page-item {% if number == page %}active{% endif %}"><a class="page-link" href="/?q={{ q|urlencode }}&page={{ number }}">{{ number }}</a></li>
+  {% endfor %}
+</ul></nav>
+{% endif %}
+{% endblock %}

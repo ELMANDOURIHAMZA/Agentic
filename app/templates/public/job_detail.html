@@ -1,0 +1,17 @@
+{% extends "public/base.html" %}
+{% block title %}{{ job.title }}{% endblock %}
+{% block content %}
+<article>
+  <h1>{{ job.title }}</h1>
+  <p class="text-muted">{{ job.location or "Localisation non précisée" }}</p>
+  <p>{{ job.description }}</p>
+  <dl class="row">
+    <dt class="col-sm-3">Diplôme demandé</dt><dd class="col-sm-9">{{ job.required_degree or "Non précisé" }}</dd>
+    <dt class="col-sm-3">Expérience</dt><dd class="col-sm-9">{{ job.required_experience_years }} an(s)</dd>
+    <dt class="col-sm-3">Compétences obligatoires</dt><dd class="col-sm-9">{{ job.required_skills|join(", ") or "Aucune" }}</dd>
+    <dt class="col-sm-3">Compétences souhaitées</dt><dd class="col-sm-9">{{ job.preferred_skills|join(", ") or "Aucune" }}</dd>
+    <dt class="col-sm-3">Langues</dt><dd class="col-sm-9">{{ job.languages|join(", ") or "Non précisées" }}</dd>
+  </dl>
+  <a class="btn btn-primary" href="/login?next=/jobs/{{ job.id }}/apply">Postuler</a>
+</article>
+{% endblock %}

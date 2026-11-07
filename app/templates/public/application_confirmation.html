@@ -1,0 +1,9 @@
+{% extends "public/base.html" %}
+{% block title %}Candidature confirmée{% endblock %}
+{% block content %}
+<div class="alert alert-success">
+  <h1>Candidature confirmée</h1>
+  <p>Votre candidature est enregistrée avec le statut <strong>{{ application.status.value }}</strong>.</p>
+  <p>Aucun traitement automatisé n'a été lancé.</p>
+</div>
+{% endblock %}

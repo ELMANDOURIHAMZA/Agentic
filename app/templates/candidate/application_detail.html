@@ -1,0 +1,9 @@
+{% extends "candidate/base.html" %}
+{% block title %}Détail candidature{% endblock %}
+{% block content %}
+<h1>{{ job.title }}</h1>
+<p class="badge text-bg-info">{{ status_label }}</p>
+<h2 class="h4">Documents</h2>
+<ul>{% for document in documents %}<li><a href="/documents/{{ document.id }}">{{ document.original_name }}</a></li>{% else %}<li>Aucun document.</li>{% endfor %}</ul>
+<a class="btn btn-primary" href="/candidate/applications/{{ application.id }}/result">Voir mes résultats</a>
+{% endblock %}

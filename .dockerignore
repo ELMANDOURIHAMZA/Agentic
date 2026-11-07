@@ -1,0 +1,14 @@
+.env
+.venv
+uploads
+.git
+.gitignore
+.pytest_cache
+.ruff_cache
+__pycache__
+*.pyc
+*.egg-info
+tests
+docs
+Dockerfile
+docker-compose.yml

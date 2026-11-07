@@ -1,0 +1,39 @@
+{% extends "admin/base.html" %}
+{% block title %}Détail candidature{% endblock %}
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center mb-3">
+  <h1 class="h3 mb-0">Détail de la candidature</h1>
+  {% if analysis %}<a class="btn btn-outline-dark" href="/admin/applications/{{ application.id }}/report.pdf">Exporter le rapport (PDF)</a>{% endif %}
+</div>
+<div class="card mb-3"><div class="card-body">
+  <p class="mb-1"><strong>Candidat :</strong> {{ candidate.first_name }} {{ candidate.last_name }} — {{ candidate.email }}</p>
+  <p class="mb-1"><strong>Poste :</strong> {{ job.title }}</p>
+  <p class="mb-0"><strong>Statut :</strong> <span class="badge text-bg-secondary" id="status-value">{{ status_label }}</span></p>
+</div></div>
+{% if application.status.value == "ERROR" %}<div class="alert alert-danger">{{ application.error_message }}</div><form method="post" action="/admin/applications/{{ application.id }}/retry"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn btn-warning">Relancer</button></form>{% elif application.status.value == "PENDING" %}<form method="post" action="/admin/applications/process"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="application_ids" value="{{ application.id }}"><button class="btn btn-primary">Lancer le traitement</button></form>{% endif %}
+<h2 class="h4 mt-4">Documents</h2><ul>{% for document in documents %}<li><a href="/documents/{{ document.id }}">{{ document.original_name }}</a></li>{% endfor %}</ul>
+{% if analysis %}
+{% if review_reasons %}<div class="alert alert-warning" role="alert"><strong>Revue humaine obligatoire.</strong> Ce dossier ne doit pas être retenu sur la seule base du score.<ul class="mb-0">{% for reason in review_reasons %}<li>{{ reason }}</li>{% endfor %}</ul></div>{% endif %}
+<h2 class="h4">Résultat</h2><p class="fs-4"><strong>Score global :</strong> {{ analysis.global_score|score }} / 100</p>
+<h3 class="h5">Détail par critère</h3>
+<table class="table table-sm"><thead><tr><th>Critère</th><th>Score</th><th>Poids</th><th>Justification</th></tr></thead><tbody>
+{% for name, detail in analysis.score_details.items() %}<tr><td>{{ name|criterion_label }}</td><td>{{ detail.score|score }}</td><td>{{ detail.weight|score }} %</td><td>{{ detail.justification }}{% if detail.evidence %}<br><small class="text-muted">Preuves : {{ detail.evidence|join(", ") }}</small>{% endif %}</td></tr>{% endfor %}
+</tbody></table>
+<p><strong>Compétences correspondantes :</strong> {{ analysis.matching_skills|join(", ") or "Aucune" }}</p><p><strong>Compétences manquantes :</strong> {{ analysis.missing_skills|join(", ") or "Aucune" }}</p>
+{% if verification %}<p><strong>Conformité documentaire :</strong> {{ verification.data.compliance_level|score }}/100</p><h3 class="h5">Incohérences</h3><ul>{% for item in verification.data.inconsistencies %}<li><strong>{{ item.field }}</strong> (gravité {{ item.severity|severity }}) — CV : {{ item.cv_value }} / document : {{ item.document_value }}</li>{% else %}<li>Aucune incohérence.</li>{% endfor %}</ul>{% endif %}
+{% if report %}<h3 class="h5">Rapport détaillé</h3><p><strong>Points forts :</strong> {{ report.strengths|join(", ") or "—" }}</p><p><strong>Manques :</strong> {{ report.gaps|join(", ") or "—" }}</p><p>{{ report.conclusion }}</p>{% if report.human_decision_reminder.casefold() not in report.conclusion.casefold() %}<p class="text-muted">{{ report.human_decision_reminder }}</p>{% endif %}{% endif %}
+{% endif %}
+<h2 class="h4 mt-4">Journal des étapes</h2><table class="table table-sm"><thead><tr><th>Agent</th><th>Statut</th><th>Début</th><th>Fin</th><th>Durée</th><th>Erreur</th></tr></thead><tbody>{% for step in steps %}<tr><td>{{ step.agent }}</td><td>{{ step.status.value }}</td><td>{{ step.started_at.strftime("%H:%M:%S.%f")[:-3] if step.started_at else "" }}</td><td>{{ step.finished_at.strftime("%H:%M:%S.%f")[:-3] if step.finished_at else "" }}</td><td>{% if step.started_at and step.finished_at %}{{ ((step.finished_at - step.started_at).total_seconds() * 1000)|round|int }} ms{% endif %}</td><td>{{ step.error_message or "" }}</td></tr>{% else %}<tr><td colspan="6">Aucune étape.</td></tr>{% endfor %}</tbody></table>
+<script>
+const statusElement = document.getElementById("status-value");
+async function refreshStatus() {
+  const response = await fetch("/admin/applications/{{ application.id }}/status", {headers: {"Accept": "application/json"}});
+  if (!response.ok) return;
+  const data = await response.json();
+  statusElement.textContent = data.status_label;
+  if (data.status === "PROCESSING") window.setTimeout(refreshStatus, 1500);
+  else if (data.status === "COMPLETED" || data.status === "ERROR") window.location.reload();
+}
+if (statusElement.textContent.trim() === "En cours de traitement") refreshStatus();
+</script>
+{% endblock %}

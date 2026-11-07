@@ -1,0 +1,19 @@
+{% extends "admin/base.html" %}
+{% block title %}Modifier une offre{% endblock %}
+{% block content %}
+<h1 class="mb-4">Modifier l'offre</h1>
+<form method="post" action="/admin/jobs/{{ job.id }}/edit" class="vstack gap-2">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <input class="form-control" name="title" value="{{ job.title }}" required maxlength="200">
+  <textarea class="form-control" name="description" required minlength="10">{{ job.description }}</textarea>
+  <input class="form-control" name="required_degree" value="{{ job.required_degree or '' }}" placeholder="Diplôme demandé">
+  <input class="form-control" type="number" name="required_experience_years" min="0" max="60" value="{{ job.required_experience_years }}">
+  <input class="form-control" name="required_skills" value="{{ job.required_skills | join(', ') }}" placeholder="Compétences obligatoires">
+  <input class="form-control" name="preferred_skills" value="{{ job.preferred_skills | join(', ') }}" placeholder="Compétences souhaitées">
+  <input class="form-control" name="required_certifications" value="{{ job.required_certifications | join(', ') }}" placeholder="Certifications demandées">
+  <input class="form-control" name="languages" value="{{ job.languages | join(', ') }}" placeholder="Langues">
+  <input class="form-control" name="location" value="{{ job.location or '' }}" placeholder="Localisation">
+  <textarea class="form-control" name="other_requirements" placeholder="Autres exigences">{{ job.other_requirements or '' }}</textarea>
+  <div><button class="btn btn-primary">Enregistrer</button> <a class="btn btn-secondary" href="/admin/jobs">Annuler</a></div>
+</form>
+{% endblock %}

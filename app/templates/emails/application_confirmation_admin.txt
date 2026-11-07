@@ -1,0 +1,5 @@
+Notification interne : une nouvelle candidature a été reçue.
+Offre : {{ job_title }}
+Candidat : {{ candidate_name }}
+Date : {{ applied_at }}
+Statut : PENDING

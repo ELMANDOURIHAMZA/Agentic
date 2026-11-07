@@ -1,0 +1,6 @@
+Bonjour {{ candidate_name }},
+
+Votre candidature pour l'offre « {{ job_title }} » a bien été enregistrée le {{ applied_at }}.
+Son statut initial est PENDING.
+
+L'équipe de recrutement vous recontactera si nécessaire.

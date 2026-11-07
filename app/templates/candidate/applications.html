@@ -1,0 +1,12 @@
+{% extends "candidate/base.html" %}
+{% block title %}Mes candidatures{% endblock %}
+{% block content %}
+<h1>Mes candidatures</h1>
+{% for application in applications %}
+<article class="card mb-3"><div class="card-body">
+  <h2 class="h5">{{ application.job_title }}</h2>
+  <p>{{ application.status_label }} — {{ application.applied_at.strftime("%d/%m/%Y") }}</p>
+  <a class="btn btn-outline-primary" href="/candidate/applications/{{ application.id }}">Détails</a>
+</div></article>
+{% else %}<p>Vous n'avez pas encore de candidature.</p>{% endfor %}
+{% endblock %}

@@ -1,0 +1,24 @@
+{% extends "public/base.html" %}
+{% block title %}Candidature - {{ job.title }}{% endblock %}
+{% block content %}
+<h1>Candidature : {{ job.title }}</h1>
+<ol class="mb-4">
+  <li>Compte connecté</li><li>Profil</li><li>Documents</li><li>Vérification</li><li>Confirmation</li>
+</ol>
+{% if error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
+<form method="post" action="/jobs/{{ job.id }}/apply/confirm" enctype="multipart/form-data" class="vstack gap-3">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <fieldset><legend>Profil</legend>
+    <input class="form-control mb-2" name="first_name" placeholder="Prénom" required>
+    <input class="form-control mb-2" name="last_name" placeholder="Nom" required>
+    <input class="form-control" name="phone" placeholder="Téléphone">
+  </fieldset>
+  <fieldset><legend>Documents obligatoires</legend>
+    <label class="form-label">CV (PDF ou DOCX)<input class="form-control" type="file" name="cv" accept=".pdf,.docx" required></label>
+    <label class="form-label">Diplôme (PDF ou DOCX)<input class="form-control" type="file" name="diploma" accept=".pdf,.docx" required></label>
+    <label class="form-label">CIN (PDF, JPG ou PNG)<input class="form-control" type="file" name="cin" accept=".pdf,.jpg,.jpeg,.png" required></label>
+  </fieldset>
+  <p>Étapes 4 et 5 : vérification et confirmation seront enregistrées avec la candidature.</p>
+  <button class="btn btn-primary">Vérifier et confirmer</button>
+</form>
+{% endblock %}

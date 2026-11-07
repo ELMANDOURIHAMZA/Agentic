@@ -1,0 +1,9 @@
+{% extends "admin/base.html" %}
+{% block title %}Classement{% endblock %}
+{% block content %}
+<h1 class="h3">Classement — {{ job.title }}</h1>
+<p class="text-muted">Candidats analysés, du meilleur au moins bon score. Le classement est une aide à la décision ; les dossiers signalés demandent une revue humaine.{% if waiting %} {{ waiting }} candidature(s) non analysée(s) ne figurent pas ici.{% endif %}</p>
+<div class="table-responsive"><table class="table align-middle"><thead><tr><th>#</th><th>Candidat</th><th>Score</th><th>Conformité docs</th><th>Revue humaine</th><th></th></tr></thead><tbody>
+{% for item in items %}<tr><td>{{ item.rank }}</td><td>{{ item.candidate.first_name }} {{ item.candidate.last_name }}</td><td><strong>{{ item.analysis.global_score|score }}</strong></td><td>{{ item.compliance|score }}</td><td>{% if item.reasons %}<span class="badge text-bg-warning" title="{{ item.reasons|join(' ') }}">Obligatoire</span>{% else %}<span class="text-muted">—</span>{% endif %}</td><td><a href="/admin/applications/{{ item.application.id }}">Détail</a> · <a href="/admin/applications/{{ item.application.id }}/report.pdf">PDF</a></td></tr>{% else %}<tr><td colspan="6">Aucune candidature analysée pour cette offre.</td></tr>{% endfor %}
+</tbody></table></div>
+{% endblock %}

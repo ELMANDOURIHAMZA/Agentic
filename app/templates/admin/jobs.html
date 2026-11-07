@@ -1,0 +1,63 @@
+{% extends "admin/base.html" %}
+{% block title %}Offres{% endblock %}
+{% block content %}
+<h1 class="mb-4">Offres d'emploi</h1>
+<form class="row g-2 mb-4" method="get" action="/admin/jobs">
+  <div class="col-auto">
+    <select class="form-select" name="status">
+      <option value="">Tous les statuts</option>
+      {% for value in ["draft", "published", "closed"] %}
+      <option value="{{ value }}" {% if status_filter and status_filter.value == value %}selected{% endif %}>{{ value }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="col-auto"><button class="btn btn-outline-secondary">Filtrer</button></div>
+</form>
+<div class="row g-4">
+  <div class="col-12 col-lg-5">
+    <h2 class="h4">Nouvelle offre</h2>
+    <form method="post" action="/admin/jobs" class="vstack gap-2">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input class="form-control" name="title" placeholder="Titre" required maxlength="200">
+      <textarea class="form-control" name="description" placeholder="Description" required minlength="10"></textarea>
+      <input class="form-control" name="required_degree" placeholder="Diplôme demandé">
+      <input class="form-control" type="number" name="required_experience_years" min="0" max="60" value="0">
+      <input class="form-control" name="required_skills" placeholder="Compétences obligatoires (une par ligne)">
+      <input class="form-control" name="preferred_skills" placeholder="Compétences souhaitées (une par ligne)">
+      <input class="form-control" name="required_certifications" placeholder="Certifications demandées (une par ligne)">
+      <input class="form-control" name="languages" placeholder="Langues (une par ligne)">
+      <input class="form-control" name="location" placeholder="Localisation">
+      <textarea class="form-control" name="other_requirements" placeholder="Autres exigences"></textarea>
+      <button class="btn btn-primary">Enregistrer brouillon</button>
+    </form>
+  </div>
+  <div class="col-12 col-lg-7">
+    <h2 class="h4">Offres existantes</h2>
+    {% for job in jobs %}
+    <article class="card mb-3">
+      <div class="card-body">
+        <h3 class="h5">{{ job.title }} <span class="badge text-bg-secondary">{{ job.status.value }}</span>{% if job.is_template %} <span class="badge text-bg-warning">Modèle importé</span>{% endif %}</h3>
+        <p>{{ job.description }}</p>
+        <div class="d-flex gap-2">
+          {% if job.status.value != "closed" %}
+          <a class="btn btn-outline-primary btn-sm" href="/admin/jobs/{{ job.id }}/edit">Modifier</a>
+          {% endif %}
+          <a class="btn btn-outline-dark btn-sm" href="/admin/jobs/{{ job.id }}/ranking">Classement</a>
+          {% if job.status.value == "draft" and not job.is_template %}
+          <form method="post" action="/admin/jobs/{{ job.id }}/publish">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button class="btn btn-success btn-sm">Publier</button>
+          </form>
+          {% elif job.status.value == "published" %}
+          <form method="post" action="/admin/jobs/{{ job.id }}/close">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button class="btn btn-warning btn-sm">Clôturer</button>
+          </form>
+          {% endif %}
+        </div>
+      </div>
+    </article>
+    {% else %}<p>Aucune offre.</p>{% endfor %}
+  </div>
+</div>
+{% endblock %}

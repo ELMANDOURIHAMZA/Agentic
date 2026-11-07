@@ -1,0 +1,24 @@
+{% extends "admin/base.html" %}
+{% block title %}Tableau de bord{% endblock %}
+{% block content %}
+<h1 class="h3 mb-4">Tableau de bord</h1>
+<div class="row g-3 mb-4">
+  <div class="col-6 col-md-3"><div class="card h-100"><div class="card-body"><div class="text-muted small">Candidatures réelles</div><div class="fs-2">{{ total }}</div></div></div></div>
+  <div class="col-6 col-md-3"><div class="card h-100"><div class="card-body"><div class="text-muted small">Comptes candidats</div><div class="fs-2">{{ candidate_accounts }}</div></div></div></div>
+  <div class="col-6 col-md-3"><div class="card h-100"><div class="card-body"><div class="text-muted small">Profils importés</div><div class="fs-2">{{ imported_profiles }}</div></div></div></div>
+  <div class="col-6 col-md-3"><div class="card h-100"><div class="card-body"><div class="text-muted small">Offres publiées</div><div class="fs-2">{{ published_jobs }}</div></div></div></div>
+  <div class="col-6 col-md-3"><div class="card h-100"><div class="card-body"><div class="text-muted small">Score moyen</div><div class="fs-2">{{ average|score }}</div></div></div></div>
+  <div class="col-6 col-md-3"><div class="card h-100"><div class="card-body"><div class="text-muted small">Revues humaines requises</div><div class="fs-2">{{ review_count }}</div></div></div></div>
+  {% for item in status_counts if item.label in ["En attente de traitement", "Erreur de traitement"] %}<div class="col-6 col-md-3"><div class="card h-100"><div class="card-body"><div class="text-muted small">{{ item.label }}</div><div class="fs-2">{{ item.count }}</div></div></div></div>{% endfor %}
+</div>
+<div class="row g-4 mb-4">
+  <div class="col-12 col-lg-6"><h2 class="h5">Candidatures par statut</h2>
+    <table class="table table-sm"><tbody>{% for item in status_counts %}<tr><td>{{ item.label }}</td><td class="text-end">{{ item.count }}</td></tr>{% endfor %}</tbody></table></div>
+  <div class="col-12 col-lg-6"><h2 class="h5">Répartition des scores</h2>
+    {% for bucket in distribution %}<div class="d-flex align-items-center mb-1"><span class="me-2" style="width:4.5rem">{{ bucket.label }}</span><div class="progress flex-grow-1" role="progressbar" aria-label="Scores {{ bucket.label }}"><div class="progress-bar" style="width: {{ (bucket.count / max_bucket * 100)|round|int }}%"></div></div><span class="ms-2" style="width:2rem">{{ bucket.count }}</span></div>{% endfor %}</div>
+</div>
+<h2 class="h5">Par offre</h2>
+<div class="table-responsive"><table class="table table-sm align-middle"><thead><tr><th>Offre</th><th>Candidatures</th><th>En attente</th><th>Terminées</th><th>Erreurs</th><th>Score moyen</th><th>Meilleur</th><th></th></tr></thead><tbody>
+{% for row in per_job %}<tr><td>{{ row.job.title }}</td><td>{{ row.applications }}</td><td>{{ row.pending }}</td><td>{{ row.completed }}</td><td>{{ row.errors }}</td><td>{{ row.average|score }}</td><td>{{ row.best|score }}</td><td><a href="/admin/jobs/{{ row.job.id }}/ranking">Classement</a></td></tr>{% else %}<tr><td colspan="8">Aucune offre.</td></tr>{% endfor %}
+</tbody></table></div>
+{% endblock %}

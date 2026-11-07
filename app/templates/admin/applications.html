@@ -1,0 +1,39 @@
+{% extends "admin/base.html" %}
+{% block title %}Candidatures{% endblock %}
+{% block content %}
+<h1 class="h3">Candidatures</h1>
+{% if message %}<div class="alert alert-info">{{ message }}</div>{% endif %}
+<form method="get" class="row g-2 mb-3">
+  <div class="col-md-4"><select class="form-select" name="job_id"><option value="">Toutes les offres</option>{% for job in jobs %}<option value="{{ job.id }}" {% if job_id == job.id %}selected{% endif %}>{{ job.title }}</option>{% endfor %}</select></div>
+  <div class="col-md-4"><select class="form-select" name="status"><option value="">Tous les statuts</option>{% for value,label in statuses %}<option value="{{ value }}" {% if status_filter and status_filter.value == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></div>
+  <div class="col-md-2"><button class="btn btn-outline-primary">Filtrer</button></div>
+</form>
+<form method="post" action="/admin/applications/process">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <button class="btn btn-primary mb-3">Lancer le traitement</button>
+  <table class="table table-sm align-middle">
+    <thead><tr><th></th><th>Candidat</th><th>Poste</th><th>Date</th><th>Statut</th><th></th></tr></thead>
+    <tbody>{% for item in items %}<tr>
+      <td>{% if item.application.status.value in ["PENDING", "ERROR"] %}<input type="checkbox" name="application_ids" value="{{ item.application.id }}">{% endif %}</td>
+      <td>{{ item.candidate.first_name }} {{ item.candidate.last_name }}</td>
+      <td>{{ item.job.title }}</td><td>{{ item.application.applied_at.strftime("%d/%m/%Y %H:%M") }}</td>
+      <td class="status-value" data-application-id="{{ item.application.id }}">{{ item.status_label }}</td>
+      <td><a href="/admin/applications/{{ item.application.id }}">Détail</a></td>
+    </tr>{% else %}<tr><td colspan="6">Aucune candidature.</td></tr>{% endfor %}</tbody>
+  </table>
+</form>
+<nav><ul class="pagination">{% for number in range(1, pages + 1) %}<li class="page-item {% if number == page %}active{% endif %}"><a class="page-link" href="?page={{ number }}{% if job_id %}&job_id={{ job_id }}{% endif %}{% if status_filter %}&status={{ status_filter.value }}{% endif %}">{{ number }}</a></li>{% endfor %}</ul></nav>
+<script>
+document.querySelectorAll(".status-value").forEach(function (element) {
+  const id = element.dataset.applicationId;
+  async function refresh() {
+    const response = await fetch("/admin/applications/" + id + "/status", {headers: {"Accept": "application/json"}});
+    if (!response.ok) return;
+    const data = await response.json();
+    element.textContent = data.status_label;
+    if (data.status === "PROCESSING") window.setTimeout(refresh, 1500);
+  }
+  if (element.textContent.trim() === "En cours de traitement") refresh();
+});
+</script>
+{% endblock %}

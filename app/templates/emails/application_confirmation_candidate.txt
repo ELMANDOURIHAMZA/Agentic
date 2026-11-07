@@ -1,0 +1,4 @@
+Bonjour {{ candidate_name }},
+
+Votre candidature pour l'offre « {{ job_title }} » a été enregistrée le {{ applied_at }}.
+Son statut initial est PENDING.

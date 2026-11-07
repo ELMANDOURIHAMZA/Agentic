@@ -1,0 +1,6 @@
+{% if request.cookies.get('auth_token') %}
+<form method="post" action="/logout" class="d-inline">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token if csrf_token is defined else request.cookies.get('csrf_token', '') }}">
+  <button type="submit" class="btn btn-outline-secondary btn-sm">Se déconnecter</button>
+</form>
+{% endif %}

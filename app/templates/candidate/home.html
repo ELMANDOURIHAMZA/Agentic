@@ -1,0 +1,7 @@
+{% extends "candidate/base.html" %}
+{% block title %}Accueil candidat{% endblock %}
+{% block content %}
+<h1>Bienvenue {{ user.first_name }}</h1>
+<p>Consultez vos candidatures et gérez votre profil.</p>
+<a class="btn btn-primary" href="/candidate/applications">Voir mes candidatures</a>
+{% endblock %}

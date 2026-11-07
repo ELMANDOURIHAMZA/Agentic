@@ -1,0 +1,12 @@
+{% extends "candidate/base.html" %}
+{% block title %}Résultats{% endblock %}
+{% block content %}
+<h1>Résultats de candidature</h1>
+{% if message %}<div class="alert alert-info">{{ message }}</div>{% endif %}
+{% if result %}
+<p><strong>Score global :</strong> {{ result.global_score|score }} / 100</p>
+<p><strong>Compétences correspondantes :</strong> {{ result.matching_skills|join(", ") or "Aucune" }}</p>
+<p><strong>Compétences non identifiées :</strong> {{ result.missing_skills|join(", ") or "Aucune" }}</p>
+<p>{{ result.compliance_summary }}</p>
+{% endif %}
+{% endblock %}

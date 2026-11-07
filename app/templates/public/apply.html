@@ -1,0 +1,7 @@
+{% extends "public/base.html" %}
+{% block title %}Postuler - {{ job.title }}{% endblock %}
+{% block content %}
+<h1>Postuler à « {{ job.title }} »</h1>
+<div class="alert alert-info">Le parcours réel de candidature sera disponible à la mission 6.</div>
+<a class="btn btn-secondary" href="/jobs/{{ job.id }}">Retour à l'offre</a>
+{% endblock %}
