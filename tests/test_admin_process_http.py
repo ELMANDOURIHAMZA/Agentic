@@ -7,7 +7,7 @@ from sqlalchemy import select
 from app.api import admin_applications
 from app.db import SessionLocal
 from app.main import app
-from app.models import AnalysisResult, Application, ApplicationStatus, User, UserRole
+from app.models import AnalysisResult, Application, ApplicationStatus, User
 from app.seed import DEMO_ADMIN_EMAIL, seed_demo
 from app.services.llm import LLMClient
 from tests.llm_fakes import FakeLLM
