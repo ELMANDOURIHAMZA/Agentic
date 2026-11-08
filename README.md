@@ -172,7 +172,6 @@ Les tests d'intégration sont opt-in et utilisent exclusivement Groq :
 $env:RUN_REAL_LLM_TESTS="1"
 $env:LLM_PROVIDER="groq"
 $env:LLM_MODEL="openai/gpt-oss-120b"
-$env:LLM_BASE_URL="https://api.groq.com/openai"
 .\.venv\Scripts\python.exe -m pytest -m integration
 ```
 
