@@ -35,7 +35,6 @@ def configure(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     monkeypatch.setenv("LLM_MODEL", "openai/gpt-oss-120b")
     monkeypatch.setenv("GROQ_API_KEY", "secret-key")
     monkeypatch.setenv("LLM_MAX_RETRIES", "1")
-    monkeypatch.setenv("LLM_BASE_URL", "")
     get_settings.cache_clear()
     yield
     get_settings.cache_clear()
@@ -113,7 +112,9 @@ def test_schema_violation_gives_up_after_retries(configure: None) -> None:
 
 def test_rate_limit_retries_with_bounded_backoff(configure: None) -> None:
     responses = [
-        httpx.Response(429, headers={"retry-after": "3"}, request=httpx.Request("POST", "http://test")),
+        httpx.Response(
+            429, headers={"retry-after": "3"}, request=httpx.Request("POST", "http://test")
+        ),
         httpx.Response(
             200,
             json={"choices": [{"message": {"content": PAYLOAD}}]},

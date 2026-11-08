@@ -27,5 +27,5 @@ Run the integrity audit after Git LFS checkout:
 .\.venv\Scripts\python.exe scripts\verify_datasets.py
 ```
 
-The generated `datasets/MANIFEST.json` is ignored because it contains local
-machine-specific hashes for large binary files.
+The expected sizes and SHA-256 values are maintained in
+`scripts/verify_datasets.py`; they are checked against the downloaded files.

@@ -2,7 +2,7 @@
 
 Généré le 2026-10-30 — fournisseur `ollama`, modèle `stub`, 3 exécution(s) par candidat.
 
-> **Attention** : `LLM_BASE_URL` est défini (serveur factice). Ces chiffres valident le code (parsing, validation, scoring, workflow), **pas la qualité d'un modèle réel**.
+> **Attention** : les tests unitaires n'appellent pas Groq. Leurs chiffres valident le code (parsing, validation, scoring, workflow), **pas la qualité d'un modèle réel**.
 
 ## Classement par offre
 

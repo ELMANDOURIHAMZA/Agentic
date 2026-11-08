@@ -178,8 +178,6 @@ def test_real_http_recruitment_workflow() -> None:
         candidate.close()
         with SessionLocal() as db:
             db.execute(
-                User.__table__.delete().where(
-                    User.email.in_([admin_email, candidate_email])
-                )
+                User.__table__.delete().where(User.email.in_([admin_email, candidate_email]))
             )
             db.commit()
