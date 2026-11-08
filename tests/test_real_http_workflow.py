@@ -171,15 +171,13 @@ def test_real_http_recruitment_workflow() -> None:
 
         result = candidate.get(f"/candidate/applications/{application_id}/result")
         assert result.status_code == 200
-        assert "Résultat indicatif disponible" in result.text
+        assert "Dossier conforme." in result.text or "Vérifications incomplètes" in result.text
         assert candidate.get("/admin/jobs").status_code == 403
     finally:
         admin.close()
         candidate.close()
         with SessionLocal() as db:
             db.execute(
-                User.__table__.delete().where(
-                    User.email.in_([admin_email, candidate_email])
-                )
+                User.__table__.delete().where(User.email.in_([admin_email, candidate_email]))
             )
             db.commit()

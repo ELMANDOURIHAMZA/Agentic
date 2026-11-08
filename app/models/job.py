@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy import JSON, Boolean, Enum, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.models.base import Base, timestamp_column
+from app.models.base import Base, timestamp_column, updated_column
 from app.models.enums import JobStatus
 
 if TYPE_CHECKING:
@@ -36,7 +36,7 @@ class Job(Base):
         index=True,
     )
     created_at: Mapped[datetime] = timestamp_column()
-    updated_at: Mapped[datetime] = timestamp_column()
+    updated_at: Mapped[datetime] = updated_column()
     published_at: Mapped[datetime | None] = mapped_column()
     closed_at: Mapped[datetime | None] = mapped_column()
     is_demo: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, index=True)

@@ -41,13 +41,18 @@ def _serializer() -> URLSafeTimedSerializer:
     return URLSafeTimedSerializer(get_settings().secret_key, salt="recruitment-auth")
 
 
-def create_auth_token(user_id: int, csrf_token: str) -> str:
-    return _serializer().dumps({"user_id": user_id, "csrf": csrf_token})
+def session_max_age() -> int:
+    return get_settings().session_max_age_seconds
+
+
+def create_auth_token(user_id: int, csrf_token: str, session_version: int = 0) -> str:
+    """Jeton signé ; ``sv`` permet de révoquer toutes les sessions d'un utilisateur."""
+    return _serializer().dumps({"user_id": user_id, "csrf": csrf_token, "sv": session_version})
 
 
 def read_auth_token(token: str) -> dict[str, Any] | None:
     try:
-        payload = _serializer().loads(token, max_age=int(timedelta(days=30).total_seconds()))
+        payload = _serializer().loads(token, max_age=session_max_age())
     except (BadSignature, SignatureExpired):
         return None
     return payload if isinstance(payload, dict) and "user_id" in payload else None
@@ -55,6 +60,23 @@ def read_auth_token(token: str) -> dict[str, Any] | None:
 
 def new_csrf_token() -> str:
     return secrets.token_urlsafe(32)
+
+
+def csrf_token_for(request: Any) -> str:
+    """Jeton CSRF stable pour la session : plusieurs onglets restent valides.
+
+    Le jeton n'est renouvelé qu'à la connexion (nouvelle session) ou s'il est absent.
+    """
+    existing = request.cookies.get("csrf_token")
+    return existing if existing and len(existing) >= 32 else new_csrf_token()
+
+
+def cookie_secure() -> bool:
+    return get_settings().app_env.casefold() != "development"
+
+
+def set_csrf_cookie(response: Any, token: str) -> None:
+    response.set_cookie("csrf_token", token, httponly=True, samesite="lax", secure=cookie_secure())
 
 
 def is_login_allowed(client_key: str) -> bool:

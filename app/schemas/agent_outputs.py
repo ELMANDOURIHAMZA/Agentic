@@ -4,6 +4,15 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 Severity = Literal["low", "medium", "high"]
+InconsistencyKind = Literal[
+    "identity",  # nom/prénom CIN ≠ CV
+    "diploma_holder",  # titulaire du diplôme ≠ identité du candidat
+    "diploma_title",  # intitulé du diplôme ≠ CV
+    "year",  # année contradictoire
+    "institution",  # établissement absent du CV
+    "missing",  # information absente (pas une preuve de fraude)
+    "unreadable",  # document illisible ou extraction incertaine (pas une preuve de fraude)
+]
 
 
 def _clean_list(values: list[str]) -> list[str]:
@@ -14,8 +23,8 @@ def _clean_list(values: list[str]) -> list[str]:
 class StructuredRequirementsOut(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    required_degree: str = Field(min_length=1, max_length=300)
-    minimum_experience_years: float = Field(ge=0, le=80)
+    required_degree: str = Field(default="", max_length=300)
+    minimum_experience_years: float = Field(default=0, ge=0, le=80)
     required_skills: list[str] = Field(default_factory=list, max_length=100)
     preferred_skills: list[str] = Field(default_factory=list, max_length=100)
     required_certifications: list[str] = Field(default_factory=list, max_length=50)
@@ -94,6 +103,8 @@ class InconsistencyOut(BaseModel):
     cv_value: str = Field(max_length=500)
     document_value: str = Field(max_length=500)
     severity: Severity
+    kind: InconsistencyKind = "identity"
+    explanation: str = Field(default="", max_length=500)
 
 
 class DocumentVerificationOut(BaseModel):

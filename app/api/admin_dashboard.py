@@ -19,7 +19,7 @@ from app.models import (
     User,
     UserRole,
 )
-from app.security.auth import new_csrf_token
+from app.security.auth import csrf_token_for, set_csrf_cookie
 from app.security.dependencies import require_admin
 from app.services.presentation import review_reasons
 from app.services.report_pdf import build_report_pdf
@@ -30,11 +30,11 @@ BUCKETS = [(0, 20), (20, 40), (40, 60), (60, 80), (80, 100.01)]
 
 
 def _page(request: Request, template: str, context: dict[str, object]) -> HTMLResponse:
-    token = new_csrf_token()
+    token = csrf_token_for(request)
     response = request.app.state.templates.TemplateResponse(
         request, template, {**context, "csrf_token": token, "error": None}
     )
-    response.set_cookie("csrf_token", token, httponly=False, samesite="lax")
+    set_csrf_cookie(response, token)
     return response
 
 

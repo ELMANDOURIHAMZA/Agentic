@@ -30,3 +30,25 @@ class CandidateResultView(BaseModel):
     matching_skills: list[str]
     missing_skills: list[str]
     compliance_summary: str
+
+
+COMPLIANT_SUMMARY = "Dossier conforme."
+TO_CONFIRM_SUMMARY = "Vérifications incomplètes : votre dossier sera confirmé par le recruteur."
+
+
+def build_candidate_view(
+    *,
+    global_score: float,
+    matching_skills: list[str],
+    missing_skills: list[str],
+    compliance_level: float | None,
+    has_inconsistencies: bool,
+) -> CandidateResultView:
+    """Vue candidat : jamais le détail des incohérences ni le rapport complet."""
+    compliant = compliance_level is not None and compliance_level >= 80 and not has_inconsistencies
+    return CandidateResultView(
+        global_score=global_score,
+        matching_skills=[str(value) for value in matching_skills],
+        missing_skills=[str(value) for value in missing_skills],
+        compliance_summary=COMPLIANT_SUMMARY if compliant else TO_CONFIRM_SUMMARY,
+    )

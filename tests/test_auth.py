@@ -167,15 +167,18 @@ def test_auth_cookie_is_secure_outside_development(monkeypatch) -> None:
         )
         db.commit()
     try:
-        client = TestClient(app)
-        csrf = client.get("/login").cookies["csrf_token"]
+        client = TestClient(app, base_url="https://testserver")  # cookies Secure : HTTPS requis
+        first = client.get("/login")
+        assert "Secure" in first.headers["set-cookie"]  # le cookie CSRF est Secure aussi
+        csrf = first.cookies["csrf_token"]
         response = client.post(
             "/login",
             data={"email": email, "password": password, "csrf_token": csrf},
             follow_redirects=False,
         )
-        assert "auth_token=" in response.headers["set-cookie"]
-        assert "Secure" in response.headers["set-cookie"]
+        cookies = response.headers.get_list("set-cookie")
+        auth_cookie = next(c for c in cookies if c.startswith("auth_token="))
+        assert "Secure" in auth_cookie and "HttpOnly" in auth_cookie and "Max-Age=" in auth_cookie
     finally:
         with SessionLocal() as db:
             db.execute(delete(User).where(User.email == email))
