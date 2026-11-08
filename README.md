@@ -74,7 +74,7 @@ refuse les valeurs d'exemple.
 | `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_PORT` | PostgreSQL Docker |
 | `SECRET_KEY` | signature des sessions |
 | `APP_ENV` | `development`, `test` ou autre environnement |
-| `LLM_PROVIDER`, `LLM_API_KEY`, `LLM_MODEL`, `LLM_BASE_URL` | fournisseur LLM (OpenAI recommandé, ou anthropic, gemini, ollama) ; `LLM_BASE_URL` remplace l'URL de base ; aucun appel réseau dans les tests |
+| `LLM_PROVIDER`, `GROQ_API_KEY`, `LLM_MODEL`, `LLM_BASE_URL` | fournisseur LLM ; Groq utilise le transport compatible OpenAI ; `LLM_API_KEY` reste accepté pour compatibilité ; aucun appel réseau dans les tests |
 | `LLM_TIMEOUT_SECONDS`, `LLM_MAX_RETRIES` | limites d'appel |
 | `WORKFLOW_STALE_TIMEOUT_SECONDS` | délai de récupération d'un run abandonné |
 | `WORKFLOW_MAX_CONCURRENCY` | candidatures analysées en parallèle dans un lot (défaut 2, max 8) |
