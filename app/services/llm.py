@@ -98,7 +98,7 @@ class LLMClient:
 
         settings = get_settings()
         post = self._http_post or httpx.post
-        base = (settings.llm_base_url or GROQ_BASE_URL).rstrip("/")
+        base = GROQ_BASE_URL
         try:
             response = post(
                 f"{base}/v1/chat/completions",
