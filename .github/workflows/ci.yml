@@ -83,6 +83,7 @@ jobs:
           RUN_REAL_LLM_TESTS: "1"
           LLM_PROVIDER: groq
           LLM_MODEL: openai/gpt-oss-120b
+          DATABASE_URL: sqlite:///./ci.db
           SECRET_KEY: ci-secret
           APP_ENV: test
         run: python -m pytest tests/test_real_llm_integration.py -m integration -q
