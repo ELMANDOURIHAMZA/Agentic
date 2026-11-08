@@ -19,9 +19,9 @@ DATASETS = (
     "datasets/ESCO dataset - v1.2.1 - classification - fr - csv.zip",
 )
 POINTER_RE = re.compile(
-    rb"version https://git-lfs.github.com/spec/v1\\n"
-    rb"oid sha256:([0-9a-f]{64})\\n"
-    rb"size ([0-9]+)\\n?"
+    rb"version https://git-lfs.github.com/spec/v1\n"
+    rb"oid sha256:([0-9a-f]{64})\n"
+    rb"size ([0-9]+)\n?"
 )
 
 
@@ -47,7 +47,7 @@ def committed_pointer(path: str) -> tuple[str, int]:
 
 def main() -> int:
     root = Path(__file__).resolve().parents[1]
-    manifest: dict[str, dict[str, str | int]] = {}
+    manifest: dict[str, dict[str, str | int | bool]] = {}
     failures: list[str] = []
 
     for relative in DATASETS:
@@ -85,11 +85,11 @@ def main() -> int:
 
     output = root / "datasets" / "MANIFEST.json"
     output.write_text(
-        json.dumps(manifest, indent=2, ensure_ascii=False) + "\\n",
+        json.dumps(manifest, indent=2, ensure_ascii=False) + "\n",
         encoding="utf-8",
     )
     if failures:
-        print("\\n".join(failures), file=sys.stderr)
+        print("\n".join(failures), file=sys.stderr)
         return 1
     print(f"Verified {len(manifest)} Git LFS archives (SHA-256, size and ZIP integrity).")
     return 0
