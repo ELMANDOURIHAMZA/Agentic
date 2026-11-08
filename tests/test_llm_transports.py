@@ -52,14 +52,12 @@ def test_groq_builds_expected_request_and_parses_answer(configure: None) -> None
     assert call["json"]["response_format"] == {"type": "json_object"}
 
 
-def test_base_url_override_is_used(configure: None) -> None:
-    import os
-
-    os.environ["LLM_BASE_URL"] = "https://proxy.example/"
+def test_custom_endpoint_cannot_redirect_groq_credentials(configure: None, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LLM_BASE_URL", "https://proxy.example")
     get_settings.cache_clear()
     recorder = Recorder({"choices": [{"message": {"content": PAYLOAD}}]})
     LLMClient(http_post=recorder).generate_structured("p", {}, Answer)
-    assert recorder.calls[0]["url"] == "https://proxy.example/v1/chat/completions"
+    assert recorder.calls[0]["url"] == "https://api.groq.com/openai/v1/chat/completions"
 
 
 def test_non_groq_provider_is_refused(configure: None, monkeypatch: pytest.MonkeyPatch) -> None:
