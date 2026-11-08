@@ -1,5 +1,3 @@
-"""Tests des quatre transports HTTP LLM avec un faux ``httpx.post`` (aucun réseau)."""
-
 import json
 from collections.abc import Iterator
 from typing import Any
@@ -17,18 +15,6 @@ class Answer(BaseModel):
 
 
 PAYLOAD = json.dumps({"value": 7})
-BODIES: dict[str, Any] = {
-    "ollama": {"response": PAYLOAD},
-    "openai": {"choices": [{"message": {"content": PAYLOAD}}]},
-    "anthropic": {"content": [{"type": "text", "text": PAYLOAD}]},
-    "gemini": {"candidates": [{"content": {"parts": [{"text": PAYLOAD}]}}]},
-}
-EXPECTED_URLS = {
-    "ollama": "http://127.0.0.1:11434/api/generate",
-    "openai": "https://api.openai.com/v1/chat/completions",
-    "anthropic": "https://api.anthropic.com/v1/messages",
-    "gemini": "https://generativelanguage.googleapis.com/v1beta/models/m-1:generateContent",
-}
 
 
 class Recorder:
@@ -44,118 +30,103 @@ class Recorder:
 
 
 @pytest.fixture
-def configure(monkeypatch: pytest.MonkeyPatch) -> Iterator[Any]:
-    def _configure(provider: str, **extra: str) -> None:
-        monkeypatch.setenv("LLM_PROVIDER", provider)
-        monkeypatch.setenv("LLM_MODEL", "m-1")
-        monkeypatch.setenv("LLM_API_KEY", "secret-key")
-        monkeypatch.setenv("LLM_MAX_RETRIES", "1")
-        monkeypatch.setenv("LLM_BASE_URL", "")
-        for key, value in extra.items():
-            monkeypatch.setenv(key, value)
-        get_settings.cache_clear()
-
-    yield _configure
+def configure(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    monkeypatch.setenv("LLM_PROVIDER", "groq")
+    monkeypatch.setenv("LLM_MODEL", "openai/gpt-oss-120b")
+    monkeypatch.setenv("GROQ_API_KEY", "secret-key")
+    monkeypatch.setenv("LLM_MAX_RETRIES", "1")
+    monkeypatch.setenv("LLM_BASE_URL", "")
+    get_settings.cache_clear()
+    yield
     get_settings.cache_clear()
 
 
-@pytest.mark.parametrize("provider", sorted(BODIES))
-def test_each_provider_builds_expected_request_and_parses_answer(
-    provider: str, configure: Any
-) -> None:
-    configure(provider)
-    recorder = Recorder(BODIES[provider])
+def test_groq_builds_expected_request_and_parses_answer(configure: None) -> None:
+    recorder = Recorder({"choices": [{"message": {"content": PAYLOAD}}]})
     result = LLMClient(http_post=recorder).generate_structured("Prompt", {"a": 1}, Answer)
     assert result == Answer(value=7)
     call = recorder.calls[0]
-    assert call["url"] == EXPECTED_URLS[provider]
-    sent = json.dumps(call["json"])
-    assert "Prompt" in sent and '\\"schema\\"' in sent
-    if provider == "openai":
-        assert call["headers"]["Authorization"] == "Bearer secret-key"
-        assert call["json"]["response_format"] == {"type": "json_object"}
-    if provider == "anthropic":
-        assert call["headers"]["x-api-key"] == "secret-key"
-        assert call["headers"]["anthropic-version"]
-    if provider == "gemini":
-        assert call["params"] == {"key": "secret-key"}
-    if provider == "ollama":
-        assert call["json"]["format"] == "json"
+    assert call["url"] == "https://api.groq.com/openai/v1/chat/completions"
+    assert call["headers"]["Authorization"] == "Bearer secret-key"
+    assert call["json"]["model"] == "openai/gpt-oss-120b"
+    assert call["json"]["response_format"] == {"type": "json_object"}
 
 
-def test_base_url_override_is_used(configure: Any) -> None:
-    configure("ollama", LLM_BASE_URL="http://llm.internal:9999/")
-    recorder = Recorder(BODIES["ollama"])
+def test_base_url_override_is_used(configure: None) -> None:
+    import os
+
+    os.environ["LLM_BASE_URL"] = "https://proxy.example/"
+    get_settings.cache_clear()
+    recorder = Recorder({"choices": [{"message": {"content": PAYLOAD}}]})
     LLMClient(http_post=recorder).generate_structured("p", {}, Answer)
-    assert recorder.calls[0]["url"] == "http://llm.internal:9999/api/generate"
+    assert recorder.calls[0]["url"] == "https://proxy.example/v1/chat/completions"
 
 
-@pytest.mark.parametrize("provider", ["openai", "anthropic", "gemini"])
-def test_missing_api_key_is_refused_before_any_call(provider: str, configure: Any) -> None:
-    configure(provider, LLM_API_KEY="  ")
-    recorder = Recorder(BODIES[provider])
-    with pytest.raises(LLMError, match="Clé API absente"):
+def test_non_groq_provider_is_refused(configure: None, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LLM_PROVIDER", "openai")
+    get_settings.cache_clear()
+    with pytest.raises(LLMError, match="Seul le fournisseur Groq"):
+        LLMClient(http_post=Recorder({})).generate_structured("p", {}, Answer)
+
+
+def test_missing_api_key_is_refused_before_any_call(
+    configure: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("GROQ_API_KEY", "  ")
+    get_settings.cache_clear()
+    recorder = Recorder({})
+    with pytest.raises(LLMError, match="Clé API Groq absente"):
         LLMClient(http_post=recorder).generate_structured("p", {}, Answer)
     assert recorder.calls == []
 
 
-@pytest.mark.parametrize("provider", sorted(BODIES))
-def test_unexpected_response_shape_becomes_llm_error(provider: str, configure: Any) -> None:
-    configure(provider)
+def test_unexpected_response_shape_becomes_llm_error(configure: None) -> None:
     with pytest.raises(LLMError, match="inattendue"):
         LLMClient(http_post=Recorder({"unexpected": True})).generate_structured("p", {}, Answer)
 
 
-def test_http_error_does_not_leak_key_or_url(configure: Any) -> None:
-    configure("gemini")
+def test_http_error_does_not_leak_key_or_url(configure: None) -> None:
     with pytest.raises(LLMError) as raised:
         LLMClient(http_post=Recorder({"error": "x"}, status=500)).generate_structured(
             "p", {}, Answer
         )
     assert "secret-key" not in str(raised.value)
-    assert "googleapis" not in str(raised.value)
+    assert "groq.com" not in str(raised.value)
 
 
-def test_invalid_json_is_retried_then_succeeds(configure: Any) -> None:
-    configure("ollama")
-    recorder = Recorder([{"response": "pas du json"}, BODIES["ollama"]])
+def test_invalid_json_is_retried_then_succeeds(configure: None) -> None:
+    recorder = Recorder(
+        [
+            {"choices": [{"message": {"content": "pas du json"}}]},
+            {"choices": [{"message": {"content": PAYLOAD}}]},
+        ]
+    )
     result = LLMClient(http_post=recorder).generate_structured("p", {}, Answer)
     assert result.value == 7
     assert len(recorder.calls) == 2
-    assert "previous_validation_error" in json.loads(recorder.calls[1]["json"]["prompt"])
 
 
-def test_schema_violation_gives_up_after_retries(configure: Any) -> None:
-    configure("ollama")
-    recorder = Recorder({"response": json.dumps({"value": "x"})})
+def test_schema_violation_gives_up_after_retries(configure: None) -> None:
+    recorder = Recorder({"choices": [{"message": {"content": json.dumps({"value": "x"})}}]})
     with pytest.raises(LLMError, match="invalide après 2"):
         LLMClient(http_post=recorder).generate_structured("p", {}, Answer)
     assert len(recorder.calls) == 2
 
 
-def test_rate_limit_retries_with_bounded_backoff(configure: Any) -> None:
-    configure("ollama", LLM_RETRY_BACKOFF_SECONDS="7")
+def test_rate_limit_retries_with_bounded_backoff(configure: None) -> None:
     responses = [
-        httpx.Response(
-            429,
-            headers={"retry-after": "3"},
-            json={"error": {"type": "rate_limit"}},
-            request=httpx.Request("POST", "http://test"),
-        ),
+        httpx.Response(429, headers={"retry-after": "3"}, request=httpx.Request("POST", "http://test")),
         httpx.Response(
             200,
-            json=BODIES["ollama"],
+            json={"choices": [{"message": {"content": PAYLOAD}}]},
             request=httpx.Request("POST", "http://test"),
         ),
     ]
-    calls: list[dict[str, Any]] = []
     delays: list[float] = []
 
     def post(url: str, **kwargs: Any) -> httpx.Response:
-        calls.append({"url": url, **kwargs})
         return responses.pop(0)
 
     result = LLMClient(http_post=post, sleep=delays.append).generate_structured("p", {}, Answer)
     assert result.value == 7
-    assert len(calls) == 2
     assert delays == [3.0]

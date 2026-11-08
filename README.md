@@ -74,7 +74,7 @@ refuse les valeurs d'exemple.
 | `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_PORT` | PostgreSQL Docker |
 | `SECRET_KEY` | signature des sessions |
 | `APP_ENV` | `development`, `test` ou autre environnement |
-| `LLM_PROVIDER`, `GROQ_API_KEY`, `LLM_MODEL`, `LLM_BASE_URL` | fournisseur LLM ; Groq utilise le transport compatible OpenAI ; `LLM_API_KEY` reste accepté pour compatibilité ; aucun appel réseau dans les tests |
+| `GROQ_API_KEY`, `LLM_MODEL`, `LLM_BASE_URL` | fournisseur Groq via transport compatible OpenAI ; aucun appel réseau dans les tests |
 | `LLM_TIMEOUT_SECONDS`, `LLM_MAX_RETRIES` | limites d'appel |
 | `WORKFLOW_STALE_TIMEOUT_SECONDS` | délai de récupération d'un run abandonné |
 | `MATCHING_*_WEIGHT` | six pondérations du score, total 100 |
@@ -166,11 +166,13 @@ docs/             architecture, sécurité, démonstration et plan de test
 
 ## Intégration LLM réelle
 
-Les tests d'intégration sont opt-in et utilisent exclusivement le fournisseur
-configuré dans les variables d'environnement :
+Les tests d'intégration sont opt-in et utilisent exclusivement Groq :
 
 ```powershell
 $env:RUN_REAL_LLM_TESTS="1"
+$env:LLM_PROVIDER="groq"
+$env:LLM_MODEL="openai/gpt-oss-120b"
+$env:LLM_BASE_URL="https://api.groq.com/openai"
 .\.venv\Scripts\python.exe -m pytest -m integration
 ```
 

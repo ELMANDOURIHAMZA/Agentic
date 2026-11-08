@@ -4,6 +4,7 @@
 .venv/
 uploads/
 real_dataset/
+datasets/MANIFEST.json
 *.pdf
 *.dump
 *.sql

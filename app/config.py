@@ -1,6 +1,6 @@
 from functools import lru_cache
 
-from pydantic import AliasChoices, Field, model_validator
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -8,11 +8,8 @@ class Settings(BaseSettings):
     database_url: str = Field(validation_alias="DATABASE_URL")
     secret_key: str = Field(validation_alias="SECRET_KEY")
     postgres_password: str = Field(default="change-me", validation_alias="POSTGRES_PASSWORD")
-    llm_provider: str = Field(default="none", validation_alias="LLM_PROVIDER")
-    llm_api_key: str | None = Field(
-        default=None,
-        validation_alias=AliasChoices("GROQ_API_KEY", "LLM_API_KEY"),
-    )
+    llm_provider: str = Field(default="groq", validation_alias="LLM_PROVIDER")
+    llm_api_key: str | None = Field(default=None, validation_alias="GROQ_API_KEY")
     llm_model: str | None = Field(default=None, validation_alias="LLM_MODEL")
     ocr_languages: str = Field(default="fra+eng+ara", validation_alias="OCR_LANGUAGES")
     llm_base_url: str | None = Field(default=None, validation_alias="LLM_BASE_URL")
