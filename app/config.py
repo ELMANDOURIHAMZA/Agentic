@@ -12,7 +12,6 @@ class Settings(BaseSettings):
     llm_api_key: str | None = Field(default=None, validation_alias="GROQ_API_KEY")
     llm_model: str | None = Field(default=None, validation_alias="LLM_MODEL")
     ocr_languages: str = Field(default="fra+eng+ara", validation_alias="OCR_LANGUAGES")
-    llm_base_url: str | None = Field(default=None, validation_alias="LLM_BASE_URL")
     llm_timeout_seconds: float = Field(
         default=30.0, gt=0, le=300, validation_alias="LLM_TIMEOUT_SECONDS"
     )
