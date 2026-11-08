@@ -51,7 +51,9 @@ def test_groq_builds_expected_request_and_parses_answer(configure: None) -> None
     assert call["json"]["response_format"] == {"type": "json_object"}
 
 
-def test_custom_endpoint_cannot_redirect_groq_credentials(configure: None, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_custom_endpoint_cannot_redirect_groq_credentials(
+    configure: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
     monkeypatch.setenv("LLM_BASE_URL", "https://proxy.example")
     get_settings.cache_clear()
     recorder = Recorder({"choices": [{"message": {"content": PAYLOAD}}]})
