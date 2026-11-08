@@ -74,7 +74,7 @@ refuse les valeurs d'exemple.
 | `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_PORT` | PostgreSQL Docker |
 | `SECRET_KEY` | signature des sessions |
 | `APP_ENV` | `development`, `test` ou autre environnement |
-| `GROQ_API_KEY`, `LLM_MODEL`, `LLM_BASE_URL` | fournisseur Groq via transport compatible OpenAI ; aucun appel réseau dans les tests |
+| `GROQ_API_KEY`, `LLM_MODEL` | fournisseur Groq uniquement ; endpoint officiel fixé dans le code |
 | `LLM_TIMEOUT_SECONDS`, `LLM_MAX_RETRIES` | limites d'appel |
 | `WORKFLOW_STALE_TIMEOUT_SECONDS` | délai de récupération d'un run abandonné |
 | `MATCHING_*_WEIGHT` | six pondérations du score, total 100 |
@@ -157,7 +157,7 @@ app/api/          routes publiques, candidat et admin
 app/models/       modèles SQLAlchemy
 app/orchestration workflow et récupération des runs
 app/services/     stockage, lecture, emails et client LLM
-app/services/llm.py client des fournisseurs LLM réels
+app/services/llm.py client Groq exclusif
 migrations/       Alembic
 scripts/          outils de maintenance non métier
 tests/            tests unitaires, intégration et sécurité
