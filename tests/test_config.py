@@ -19,3 +19,15 @@ def test_legacy_llm_api_key_alias_is_not_used() -> None:
         _env_file=None,
     )
     assert settings.llm_api_key is None
+
+
+def test_groq_configuration_defaults_are_explicit() -> None:
+    settings = Settings(
+        DATABASE_URL="postgresql://localhost/db",
+        SECRET_KEY="local-secret",
+        GROQ_API_KEY="test-groq-key",
+        _env_file=None,
+    )
+    assert settings.llm_provider == "groq"
+    assert settings.llm_model == "openai/gpt-oss-120b"
+    assert settings.llm_base_url == "https://api.groq.com/openai/v1"

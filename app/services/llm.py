@@ -1,8 +1,10 @@
 import json
 import logging
+import re
 import time
 from collections.abc import Callable
 from typing import Any, TypeVar
+from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ValidationError
 
@@ -11,7 +13,18 @@ from app.config import get_settings
 logger = logging.getLogger(__name__)
 OutputModel = TypeVar("OutputModel", bound=BaseModel)
 Transport = Callable[[str, dict[str, Any], float], Any]
-GROQ_BASE_URL = "https://api.groq.com/openai"
+_PROVIDER_ERROR_MAX_LENGTH = 500
+_SAFE_ERROR_FIELD = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,79}$")
+_KNOWN_PROVIDER_ERROR_FIELDS = frozenset(
+    {
+        "invalid_request_error",
+        "authentication_error",
+        "rate_limit_exceeded",
+        "rate_limit_error",
+        "bad_request",
+        "tokens",
+    }
+)
 
 
 class LLMError(RuntimeError):
@@ -98,16 +111,17 @@ class LLMClient:
 
         settings = get_settings()
         post = self._http_post or httpx.post
-        base = GROQ_BASE_URL
+        base = settings.llm_base_url.rstrip("/")
+        payload = {
+            "model": settings.llm_model,
+            "response_format": {"type": "json_object"},
+            "messages": [{"role": "user", "content": json.dumps(request)}],
+        }
         try:
             response = post(
-                f"{base}/v1/chat/completions",
+                f"{base}/chat/completions",
                 headers={"Authorization": f"Bearer {settings.llm_api_key}"},
-                json={
-                    "model": settings.llm_model or "openai/gpt-oss-120b",
-                    "response_format": {"type": "json_object"},
-                    "messages": [{"role": "user", "content": json.dumps(request)}],
-                },
+                json=payload,
                 timeout=settings.llm_timeout_seconds,
             )
             response.raise_for_status()
@@ -115,6 +129,7 @@ class LLMClient:
         except (KeyError, IndexError, TypeError, ValueError) as exc:
             raise LLMError("Réponse inattendue de Groq.") from exc
         except httpx.HTTPStatusError as exc:
+            self._log_provider_http_error(exc, settings.llm_model, base, payload)
             if exc.response.status_code == 429:
                 retry_after: float | None = None
                 raw_retry_after = exc.response.headers.get("retry-after")
@@ -127,3 +142,36 @@ class LLMClient:
             raise LLMError("Erreur HTTP de Groq.") from exc
         except httpx.HTTPError as exc:
             raise LLMError("Erreur HTTP de Groq.") from exc
+
+    @staticmethod
+    def _log_provider_http_error(
+        error: Any, model: str, base_url: str, payload: dict[str, Any]
+    ) -> None:
+        response = error.response
+        error_type = "unknown"
+        error_code = "unknown"
+        try:
+            body = response.json()
+            provider_error = body.get("error", {}) if isinstance(body, dict) else {}
+            if isinstance(provider_error, dict):
+                error_type = LLMClient._safe_error_field(provider_error.get("type"))
+                error_code = LLMClient._safe_error_field(provider_error.get("code"))
+        except (ValueError, TypeError):
+            pass
+        endpoint_path = urlsplit(base_url).path or "/"
+        logger.warning(
+            "Groq HTTP error status=%s type=%s code=%s model=%s path=%s payload_size=%s",
+            response.status_code,
+            error_type,
+            error_code,
+            model,
+            endpoint_path,
+            len(json.dumps(payload)),
+        )
+
+    @staticmethod
+    def _safe_error_field(value: Any) -> str:
+        candidate = str(value) if isinstance(value, str) else ""
+        if _SAFE_ERROR_FIELD.fullmatch(candidate) and candidate in _KNOWN_PROVIDER_ERROR_FIELDS:
+            return candidate[:_PROVIDER_ERROR_MAX_LENGTH]
+        return "unknown"

@@ -21,4 +21,6 @@ def test_reference_archives_are_csv_based() -> None:
     for archive in ("db_31_0_csv.zip", "ESCO dataset - v1.2.1 - classification - fr - csv.zip"):
         names = _names(archive)
         assert names
-        assert all(Path(name).suffix.casefold() in {".csv", ".txt"} for name in names)
+        files = {name for name in names if not name.endswith("/")}
+        assert files
+        assert all(Path(name).suffix.casefold() in {".csv", ".txt"} for name in files)

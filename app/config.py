@@ -10,7 +10,10 @@ class Settings(BaseSettings):
     postgres_password: str = Field(default="change-me", validation_alias="POSTGRES_PASSWORD")
     llm_provider: str = Field(default="groq", validation_alias="LLM_PROVIDER")
     llm_api_key: str | None = Field(default=None, validation_alias="GROQ_API_KEY")
-    llm_model: str | None = Field(default=None, validation_alias="LLM_MODEL")
+    llm_model: str = Field(default="openai/gpt-oss-120b", validation_alias="LLM_MODEL")
+    llm_base_url: str = Field(
+        default="https://api.groq.com/openai/v1", validation_alias="LLM_BASE_URL"
+    )
     ocr_languages: str = Field(default="fra+eng+ara", validation_alias="OCR_LANGUAGES")
     llm_timeout_seconds: float = Field(
         default=30.0, gt=0, le=300, validation_alias="LLM_TIMEOUT_SECONDS"
@@ -76,6 +79,16 @@ class Settings(BaseSettings):
         )
         if round(sum(weights), 6) != 100:
             raise ValueError("Les pondérations du matching doivent totaliser 100")
+        return self
+
+    @model_validator(mode="after")
+    def validate_groq_configuration(self) -> "Settings":
+        if self.llm_provider.casefold().strip() != "groq":
+            raise ValueError("LLM_PROVIDER doit être groq.")
+        if self.llm_model != "openai/gpt-oss-120b":
+            raise ValueError("LLM_MODEL doit être openai/gpt-oss-120b.")
+        if self.llm_base_url.rstrip("/") != "https://api.groq.com/openai/v1":
+            raise ValueError("LLM_BASE_URL doit être l'endpoint officiel Groq.")
         return self
 
 

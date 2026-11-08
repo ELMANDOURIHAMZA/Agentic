@@ -87,6 +87,7 @@ jobs:
           RUN_REAL_LLM_TESTS: "1"
           LLM_PROVIDER: groq
           LLM_MODEL: openai/gpt-oss-120b
+          LLM_BASE_URL: https://api.groq.com/openai/v1
           DATABASE_URL: sqlite:///./ci.db
           SECRET_KEY: ci-secret
           APP_ENV: test
